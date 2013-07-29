@@ -3,12 +3,15 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
+# Version 1.0.0
+
 
 # Class to provide user login
 class userAccount
 {
 	# Specify available arguments as defaults or as NULL (to represent a required argument)
 	private $defaults = array (
+		'namespace'							=> 'UserAccount',
 		'baseUrl'							=> '',
 		'loginUrl'							=> '/login/',				// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
 		'logoutUrl'							=> '/login/logout.html',	// after baseUrl
@@ -78,7 +81,7 @@ class userAccount
 		$this->doSessionChecks ();
 		
 		# Return the e-mail address
-		return ($_SESSION ? $_SESSION['userId'] : false);
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['userId'] : false);
 	}
 	
 	
@@ -89,7 +92,7 @@ class userAccount
 		$this->doSessionChecks ();
 		
 		# Return the e-mail address
-		return ($_SESSION ? $_SESSION['email'] : false);
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['email'] : false);
 	}
 	
 	
@@ -108,7 +111,7 @@ class userAccount
 		$this->doSessionChecks ();
 		
 		# Require login if the user has not presented a session
-		if (!$_SESSION) {
+		if (!isSet ($_SESSION[$this->settings['namespace']])) {
 			
 			# If not on the login page, redirect to it
 			if ($_SERVER['SCRIPT_URL'] != $this->baseUrl . $this->settings['loginUrl']) {
@@ -121,11 +124,11 @@ class userAccount
 			if ($accountDetails = $this->loginForm ()) {
 				
 				# Write the values into the session
-				$_SESSION['userId'] = $accountDetails['id'];
-				$_SESSION['email'] = $accountDetails['email'];
-				$_SESSION['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
+				$_SESSION[$this->settings['namespace']]['userId'] = $accountDetails['id'];
+				$_SESSION[$this->settings['namespace']]['email'] = $accountDetails['email'];
+				$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
 				$timestamp = time ();
-				$_SESSION['timestamp'] = $timestamp;
+				$_SESSION[$this->settings['namespace']]['timestamp'] = $timestamp;
 				
 				# Take the user to the same page in order to clear the form's POSTed variables and thereby prevent confusion in cases of refreshed pages
 				$location = $_SERVER['REQUEST_URI'];
@@ -135,7 +138,7 @@ class userAccount
 		}
 		
 		# If logged in, say so
-		if ($_SESSION) {
+		if (isSet ($_SESSION[$this->settings['namespace']])) {
 			
 			# Determine the return-to location, ensuring any URL return value starts with a /
 			if (isSet ($_GET['returnto']) && strlen ($_GET['returnto'])) {
@@ -154,14 +157,14 @@ class userAccount
 			# Confirm login if required and still on the page
 			if ($showStatus) {
 				$this->html .= "\n" . '<div class="graybox">';
-				$this->html .= "\n\t" . '<p><img src="/images/icons/tick.png" /> You are currently ' . $this->settings['loggedInText'] . ' as <strong>' . htmlspecialchars ($_SESSION['email']) . '</strong>.</p>';
+				$this->html .= "\n\t" . '<p><img src="/images/icons/tick.png" /> You are currently ' . $this->settings['loggedInText'] . ' as <strong>' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</strong>.</p>';
 				$this->html .= "\n" . '</div>';
 				$this->html .= "\n" . '<p>Please <a href="' . $this->baseUrl . $this->settings['logoutUrl'] . '">' . $this->settings['logoutText'] . '</a> when you have finished.</p>';
 			}
 		}
 		
 		# Return the session token
-		return ($_SESSION ? $_SESSION['email'] : false);
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['email'] : false);
 	}
 	
 	
@@ -169,8 +172,8 @@ class userAccount
 	private function doSessionChecks ()
 	{
 		# If the user has presented a session, check the user-agent
-		if ($_SESSION) {
-			if ($_SESSION['fingerprint'] != $this->hashedString ($_SERVER['HTTP_USER_AGENT'])) {
+		if (isSet ($_SESSION[$this->settings['namespace']])) {
+			if ($_SESSION[$this->settings['namespace']]['fingerprint'] != $this->hashedString ($_SERVER['HTTP_USER_AGENT'])) {
 				$this->killSession ();
 				$this->html .= "\n<p>You have been {$this->settings['loggedOutText']}.</p>";
 			}
@@ -178,8 +181,8 @@ class userAccount
 		
 		# Keep the user's session alive unless inactive for the time period defined in the settings
 		$timestamp = time ();
-		if (isSet ($_SESSION['timestamp'])) {
-			if (($timestamp - $_SESSION['timestamp']) > $this->settings['autoLogoutTime']) {
+		if (isSet ($_SESSION[$this->settings['namespace']]) && isSet ($_SESSION[$this->settings['namespace']]['timestamp'])) {
+			if (($timestamp - $_SESSION[$this->settings['namespace']]['timestamp']) > $this->settings['autoLogoutTime']) {
 				
 				# Explicitly kill the session
 				$this->killSession ();
@@ -196,8 +199,8 @@ class userAccount
 	public function getStatus ()
 	{
 		# If logged in, show the e-mail
-		if ($_SESSION) {
-			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . htmlspecialchars ($_SESSION['email']) . '</a>';
+		if (isSet ($_SESSION[$this->settings['namespace']])) {
+			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</a>';
 		} else {
 			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . $this->settings['loginText'] . '</a>';
 		}
@@ -211,7 +214,7 @@ class userAccount
 	public function logout ()
 	{
 		# Cache whether the user presented session data
-		$userHadSessionData = (bool) $_SESSION;
+		$userHadSessionData = (isSet ($_SESSION[$this->settings['namespace']]));
 		
 		# Explicitly destroy the session
 		$this->killSession ();
@@ -232,7 +235,7 @@ class userAccount
 	{
 		session_unset ();
 		session_destroy ();
-		$_SESSION = array ();
+		unset ($_SESSION[$this->settings['namespace']]);
 		
 		if (ini_get ('session.use_cookies')) {
 			$params = session_get_cookie_params ();
@@ -372,6 +375,7 @@ class userAccount
 		}
 		
 		# Validate the token and e-mail combination
+		application::dumpData ($_GET);
 		$match = array ('validationToken' => $_GET['token'], 'email' => $_GET['email']);
 		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
 			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
