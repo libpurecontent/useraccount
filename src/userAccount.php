@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.0.0
+# Version 1.0.1
 
 
 # Class to provide user login
@@ -36,6 +36,22 @@ class userAccount
 	# Class properties
 	private $html  = '';
 	
+	# Database structure definition
+	public function databaseStructure ()
+	{
+		return "
+		CREATE TABLE IF NOT EXISTS `{$this->settings['table']}` (
+		  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Automatic key',
+		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
+		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
+		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation (empty if validated)',
+		  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
+		  `passwordreset` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Password reset token',
+		  PRIMARY KEY (`id`),
+		  UNIQUE KEY `email` (`email`)
+		) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Users';
+		";
+	}
 	
 	
 	# Constructor
@@ -375,7 +391,6 @@ class userAccount
 		}
 		
 		# Validate the token and e-mail combination
-		application::dumpData ($_GET);
 		$match = array ('validationToken' => $_GET['token'], 'email' => $_GET['email']);
 		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
 			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
