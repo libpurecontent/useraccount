@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.0.1
+# Version 1.0.2
 
 
 # Class to provide user login
@@ -69,10 +69,18 @@ class userAccount
 		
 		# Obtain the database connection
 		if (!$databaseConnection || !$databaseConnection->connection) {
-			echo "\n<p class=\"warning\">No valid database connection was supplied. The website administrator needs to fix this problem.</p>";
+			$this->setupError = "\n<p class=\"warning\">No valid database connection was supplied. The website administrator needs to fix this problem.</p>";
 			return false;
 		}
 		$this->databaseConnection = $databaseConnection;
+		
+		# Ensure the table exists
+		$this->setupError = false;
+		$tables = $this->databaseConnection->getTables ($this->settings['database']);
+		if (!in_array ($this->settings['table'], $tables)) {
+			$this->setupError = "\n<p class=\"warning\">The login system is not set up properly. The website administrator needs to fix this problem.</p>";
+			return false;
+		}
 		
 		# Lock down PHP session management
 		ini_set ('session.name', 'session');
@@ -123,6 +131,12 @@ class userAccount
 	# Session handler, with regenerative IDs and user agent checking
 	public function login ($showStatus = false)
 	{
+		# End if there is a setup error
+		if ($this->setupError) {
+			echo $this->setupError;
+			return false;
+		}
+		
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
 		
@@ -326,6 +340,12 @@ class userAccount
 	# User account creation page
 	public function register ()
 	{
+		# End if there is a setup error
+		if ($this->setupError) {
+			echo $this->setupError;
+			return false;
+		}
+		
 		# Start the HTML
 		$html  = '';
 		
