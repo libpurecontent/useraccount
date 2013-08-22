@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.0.2
+# Version 1.1.0
 
 
 # Class to provide user login
@@ -45,8 +45,8 @@ class userAccount
 		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
 		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
 		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation (empty if validated)',
-		  `created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
 		  `passwordreset` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Password reset token',
+		  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
 		  PRIMARY KEY (`id`),
 		  UNIQUE KEY `email` (`email`)
 		) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Users';
@@ -153,17 +153,13 @@ class userAccount
 			# Show the login form
 			if ($accountDetails = $this->loginForm ()) {
 				
-				# Write the values into the session
-				$_SESSION[$this->settings['namespace']]['userId'] = $accountDetails['id'];
-				$_SESSION[$this->settings['namespace']]['email'] = $accountDetails['email'];
-				$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
-				$timestamp = time ();
-				$_SESSION[$this->settings['namespace']]['timestamp'] = $timestamp;
+				# Accept the login, i.e. write into the session
+				$this->doLogin ($accountDetails['id'], $accountDetails['email']);
 				
 				# Take the user to the same page in order to clear the form's POSTed variables and thereby prevent confusion in cases of refreshed pages
 				$location = $_SERVER['REQUEST_URI'];
 				header ('Location: http://' . $_SERVER['SERVER_NAME'] . $location);
-				$this->html .= "\n<p>You have been authenticated. <a href=\"" . htmlspecialchars ($location) . '">Please click here to continue.</a></p>';
+				$this->html .= "\n<p>You are now logged in. <a href=\"" . htmlspecialchars ($location) . '">Please click here to continue.</a></p>';
 			}
 		}
 		
@@ -195,6 +191,18 @@ class userAccount
 		
 		# Return the session token
 		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['email'] : false);
+	}
+	
+	
+	# Function to accept the login, i.e. write into the session
+	private function doLogin ($userId, $email)
+	{
+		# Write the values into the session
+		$_SESSION[$this->settings['namespace']]['userId'] = $userId;
+		$_SESSION[$this->settings['namespace']]['email'] = $email;
+		$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
+		$timestamp = time ();
+		$_SESSION[$this->settings['namespace']]['timestamp'] = $timestamp;
 	}
 	
 	
@@ -295,6 +303,7 @@ class userAccount
 			'displayRestrictions' => false,
 			'requiredFieldIndicator' => false,
 			'name' => false,
+			'autofocus' => true,
 		));
 		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . urldecode ($_GET['email']) : false) . '">Reset your password</a> if you have forgotten it.');
 		$form->email (array (
@@ -314,7 +323,7 @@ class userAccount
 					if (application::validEmail ($unfinalisedData['email'])) {	// #!# This restatement of logic is a bit hacky
 						
 						# Check the data and, if there is a failure inject a failure into the form processing
-						if (!$accountDetails = $this->checkCredentials ($unfinalisedData['email'], $unfinalisedData['password'], $message)) {
+						if (!$accountDetails = $this->getUser ($unfinalisedData['email'], $unfinalisedData['password'], $message)) {
 							$form->registerProblem ('failure', $message);
 						}
 					}
@@ -434,8 +443,8 @@ class userAccount
 	# Reset password page
 	public function resetpassword ()
 	{
-		# If a token is supplied, go to the reset form
-		if (isSet ($_GET['token'])) {return $this->passwordResetPage ();}
+		# If a token is supplied, divert to the reset form
+		if (isSet ($_GET['token'])) {return $this->newPasswordChangePage ();}
 		
 		# Start the HTML
 		$html  = '';
@@ -451,6 +460,7 @@ class userAccount
 			'displayRestrictions' => false,
 			'requiredFieldIndicator' => false,
 			'name' => false,
+			'autofocus' => true,
 		));
 		$form->heading ('p', 'You can use this form to reset your password.</p><p>Enter your e-mail address below. If the e-mail address has been registered, instructions on resetting your password will be sent to it.');
 		$form->email (array (
@@ -497,8 +507,8 @@ class userAccount
 	}
 	
 	
-	# Password reset form
-	private function passwordResetPage ()
+	# Password change page
+	private function newPasswordChangePage ()
 	{
 		# Start the HTML
 		$html  = '';
@@ -528,9 +538,13 @@ class userAccount
 		$insertData = array ('password' => $passwordHashed, 'passwordreset' => NULL, 'validationToken' => NULL);
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $insertData, array ('email' => $result['email']));
 		
+		# Log the user in
+		$accountDetails = $this->getUser ($result['email'], $result['password']);
+		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
+		
 		# Confirm and invite the user to login
-		$html .= "\n<p><strong>Your password has been successfully changed.</strong></p>";
-		$html .= "\n<p>You can now <a href=\"{$this->baseUrl}{$this->settings['loginUrl']}?email=" . htmlspecialchars (rawurlencode ($result['email'])) . "\">{$this->settings['loginText']} with the new password</a>.</p>";
+		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
+		$html .= "\n<p>You are now logged in with the new password</a>.</p>";
 		
 		# Register the HTML
 		$this->html .= $html;
@@ -543,6 +557,14 @@ class userAccount
 		# Start the HTML
 		$html  = '';
 		
+		# In password reset mode, i.e. where a token has been supplied, prefill the e-mail address field; note that an unvalidated account is fine, because this the reset token has come from an e-mail anyway
+		$prefillEmail = false;
+		if ($tokenConfirmation) {
+			if ($prefill = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('passwordreset' => $tokenConfirmation))) {
+				$prefillEmail = $prefill['email'];
+			}
+		}
+		
 		# Create the form
 		require_once ('ultimateForm.php');
 		$form = new form (array (
@@ -551,7 +573,8 @@ class userAccount
 			'displayRestrictions' => false,
 			'requiredFieldIndicator' => false,
 			'name' => false,
-      'display' => 'paragraphs',
+			'display' => 'paragraphs',
+			'autofocus' => true,
 		));
 		if (!$tokenConfirmation) {
 			$form->heading ('p', 'Enter your e-mail address. We will send a confirmation message to this address.');
@@ -561,6 +584,8 @@ class userAccount
 			'title'			=> 'E-mail address',
 			'required'		=> true,
 			'size'			=> 50,
+			'default'		=> $prefillEmail,
+			'editable'		=> (!$prefillEmail),
 		));
 		$form->heading ('p', 'Now ' . ($tokenConfirmation ? 'enter a new password' : 'choose a password') . ", and repeat it to confirm.");
 		$form->password (array (
@@ -634,7 +659,7 @@ class userAccount
 	
 	
 	# Check credentials
-	private function checkCredentials ($email, $password, &$message)
+	private function getUser ($email, $password, &$message = '')
 	{
 		# Get the data row for this username
 		$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('email' => $email));
