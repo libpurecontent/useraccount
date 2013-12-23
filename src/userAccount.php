@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.1.0
+# Version 1.1.1
 
 
 # Class to provide user login
@@ -46,6 +46,8 @@ class userAccount
 		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
 		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation (empty if validated)',
 		  `passwordreset` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Password reset token',
+		  `lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
+		  `validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
 		  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
 		  PRIMARY KEY (`id`),
 		  UNIQUE KEY `email` (`email`)
@@ -154,12 +156,13 @@ class userAccount
 			if ($accountDetails = $this->loginForm ()) {
 				
 				# Accept the login, i.e. write into the session
-				$this->doLogin ($accountDetails['id'], $accountDetails['email']);
+				$this->writeSession ($accountDetails['id'], $accountDetails['email']);
 				
 				# Take the user to the same page in order to clear the form's POSTed variables and thereby prevent confusion in cases of refreshed pages
 				$location = $_SERVER['REQUEST_URI'];
 				header ('Location: http://' . $_SERVER['SERVER_NAME'] . $location);
 				$this->html .= "\n<p>You are now logged in. <a href=\"" . htmlspecialchars ($location) . '">Please click here to continue.</a></p>';
+				return true;
 			}
 		}
 		
@@ -194,15 +197,14 @@ class userAccount
 	}
 	
 	
-	# Function to accept the login, i.e. write into the session
-	private function doLogin ($userId, $email)
+	# Function to write the login into the session
+	private function writeSession ($userId, $email)
 	{
 		# Write the values into the session
 		$_SESSION[$this->settings['namespace']]['userId'] = $userId;
 		$_SESSION[$this->settings['namespace']]['email'] = $email;
 		$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
-		$timestamp = time ();
-		$_SESSION[$this->settings['namespace']]['timestamp'] = $timestamp;
+		$_SESSION[$this->settings['namespace']]['timestamp'] = time ();
 	}
 	
 	
@@ -427,8 +429,8 @@ class userAccount
 			return;	// End here; take no action
 		}
 		
-		# Wipe out the validation token
-		$updateData = array ('validationToken' => NULL);
+		# Wipe out the validation token and log the validation time
+		$updateData = array ('validationToken' => NULL, 'validatedAt' => 'NOW()');
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $_GET['email']));
 		
 		# Confirm success
@@ -540,7 +542,7 @@ class userAccount
 		
 		# Log the user in
 		$accountDetails = $this->getUser ($result['email'], $result['password']);
-		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
+		$this->writeSession ($accountDetails['id'], $accountDetails['email']);
 		
 		# Confirm and invite the user to login
 		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
@@ -667,12 +669,24 @@ class userAccount
 		# Hash the supplied password, so it can be compared against the database string which is also hashed
 		$passwordHashed = $this->hashedString ($password, $email);
 		
-		# Compare
-		if (($passwordHashed == $user['password']) && (!strlen ($user['validationToken']))) {return $user;}
+		# Authenticate the credentials
+		$isValid = (($passwordHashed == $user['password']) && !strlen ($user['validationToken']));
 		
-		# Credentials not valid
-		$message = 'The e-mail/password pair you provided did not match any registered and validated account. <a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . '?email=' . htmlspecialchars (rawurlencode ($email)) . '">Reset your password</a> if you have forgotten it.';
-		return false;
+		# End if credentials not valid
+		if (!$isValid) {
+			$message = 'The e-mail/password pair you provided did not match any registered and validated account. <a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . '?email=' . htmlspecialchars (rawurlencode ($email)) . '">Reset your password</a> if you have forgotten it.';
+			return false;
+		}
+		
+		# Log that the user has logged in
+		$updateData = array ('lastLoggedInAt' => 'NOW()');
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $email));
+		
+		# Filter to id and e-mail fields - all others should be considered internal
+		$user = array ('id' => $user['id'], 'email' => $user['email']);
+		
+		# Return the user
+		return $user;
 	}
 }
 
