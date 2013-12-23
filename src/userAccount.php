@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.1.1
+# Version 1.2.0
 
 
 # Class to provide user login
@@ -145,14 +145,14 @@ class userAccount
 		# Require login if the user has not presented a session
 		if (!isSet ($_SESSION[$this->settings['namespace']])) {
 			
-			# If not on the login page, redirect to it
+			# Make sure the user is using the official URL for this login page, if embedded
 			if ($_SERVER['SCRIPT_URL'] != $this->baseUrl . $this->settings['loginUrl']) {
-				$redirectto = $this->baseUrl . $this->settings['loginUrl'] . '?returnto=' . $_SERVER['REQUEST_URI'];
+				$redirectto = $this->baseUrl . $this->settings['loginUrl'] . '?' . $_SERVER['SCRIPT_URL'];
 				header ('Location: http://' . $_SERVER['SERVER_NAME'] . $redirectto);
 				return true;
 			}
 			
-			# Show the login form
+			# Show the login form, and obtain the account details if successfully authenticated
 			if ($accountDetails = $this->loginForm ()) {
 				
 				# Accept the login, i.e. write into the session
@@ -169,21 +169,22 @@ class userAccount
 		# If logged in, say so
 		if (isSet ($_SESSION[$this->settings['namespace']])) {
 			
-			# Determine the return-to location, ensuring any URL return value starts with a /
-			if (isSet ($_GET['returnto']) && strlen ($_GET['returnto'])) {
-				$returnto = $this->baseUrl . $this->settings['loginUrl'];
-				if (substr ($_GET['returnto'], 0, 1) == '/') {	// Authorise it if correct
-					$returnto = $_GET['returnto'];
-				}
-				
-				# Redirect to the user's original location if required
+			# If a returnto is specified, find this in the subsequent query string; note we cannot use a GET key because /path/foo.html would become /path/foo_html as PHP converts . to _
+			$returnto = false;
+			if (substr_count ($_SERVER['QUERY_STRING'], "action={$_GET['action']}&/")) {
+				$returnto = '/' . str_replace ("action={$_GET['action']}&/", '', $_SERVER['QUERY_STRING']);
+			}
+			
+			# If a validated returnto is specified, redirect to the user's original location if required
+			if ($returnto) {
 				if ($_SERVER['REQUEST_URI'] != $returnto) {
 					header ('Location: http://' . $_SERVER['SERVER_NAME'] . $returnto);
+					$this->html .= "\n<p>You are now logged in. <a href=\"" . htmlspecialchars ($returnto) . '">Please click here to continue.</a></p>';
 					return true;
 				}
 			}
 			
-			# Confirm login if required and still on the page
+			# Otherwise, still on the page, confirm login
 			if ($showStatus) {
 				$this->html .= "\n" . '<div class="graybox">';
 				$this->html .= "\n\t" . '<p><img src="/images/icons/tick.png" /> You are currently ' . $this->settings['loggedInText'] . ' as <strong>' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</strong>.</p>';
@@ -307,12 +308,12 @@ class userAccount
 			'name' => false,
 			'autofocus' => true,
 		));
-		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . urldecode ($_GET['email']) : false) . '">Reset your password</a> if you have forgotten it.');
+		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.');
 		$form->email (array (
 			'name'			=> 'email',
 			'title'			=> 'E-mail address',
 			'required'		=> true,
-			'default'		=> (isSet ($_GET['email']) ? urldecode ($_GET['email']) : false),
+			'default'		=> (isSet ($_GET['email']) ? rawurldecode ($_GET['email']) : false),
 		));
 		$form->password (array (
 			'name'			=> 'password',
@@ -470,7 +471,7 @@ class userAccount
 			'title'			=> 'E-mail address',
 			'required'		=> true,
 			'editable'		=> (!$loggedInUsername),
-			'default'		=> ($loggedInUsername ? $loggedInUsername : (isSet ($_GET['email']) ? urldecode ($_GET['email']) : false)),
+			'default'		=> ($loggedInUsername ? $loggedInUsername : (isSet ($_GET['email']) ? rawurldecode ($_GET['email']) : false)),
 		));
 		$form->heading ('p', 'If no e-mail comes through after a few tries, it is likely that the original e-mail you gave was invalid. Please check your address and create a new account.');
 		if (!$result = $form->process ($html)) {
