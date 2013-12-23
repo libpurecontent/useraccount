@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.2.0
+# Version 1.2.1
 
 
 # Class to provide user login
@@ -173,6 +173,17 @@ class userAccount
 			$returnto = false;
 			if (substr_count ($_SERVER['QUERY_STRING'], "action={$_GET['action']}&/")) {
 				$returnto = '/' . str_replace ("action={$_GET['action']}&/", '', $_SERVER['QUERY_STRING']);
+			}
+			
+			# If returnto is set to one of the internal pages (e.g. the user has clicked on a top-right login link while on the reset password page), avoid redirecting back to that internal page, to avoid confusion
+			if ($returnto) {
+				$avoidReturnto = array (
+					$this->baseUrl . '/' . $this->settings['pageResetpassword'],
+					$this->baseUrl . '/' . $this->settings['pageRegister'],
+				);
+				if (in_array ($returnto, $avoidReturnto)) {
+					$returnto = $this->baseUrl . '/';
+				}
 			}
 			
 			# If a validated returnto is specified, redirect to the user's original location if required
@@ -547,7 +558,7 @@ class userAccount
 		
 		# Confirm and invite the user to login
 		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
-		$html .= "\n<p>You are now logged in with the new password</a>.</p>";
+		$html .= "\n<p>You are now logged in with the new password.</p>";
 		
 		# Register the HTML
 		$this->html .= $html;
