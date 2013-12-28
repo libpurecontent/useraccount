@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.2.5
+# Version 1.2.6
 
 
 # Class to provide user login
@@ -24,7 +24,7 @@ class userAccount
 		'pageResetpassword'					=> '/login/resetpassword/',	// after baseUrl
 		'applicationName'					=> NULL,
 		'administratorEmail'				=> NULL,
-		'passwordResetTokenLength'			=> 24,
+		'validationTokenLength'				=> 24,
 		'loginText'							=> 'log in',
 		'loggedInText'						=> 'logged in',
 		'logoutText'						=> 'log out',
@@ -44,8 +44,7 @@ class userAccount
 		  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Automatic key',
 		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
 		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
-		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation (empty if validated)',
-		  `passwordreset` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Password reset token',
+		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation or password reset',
 		  `lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
 		  `validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
 		  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
@@ -393,10 +392,10 @@ class userAccount
 		$passwordHashed = $this->hashedString ($result['password'], $result['email']);
 		
 		# Create a token
-		$token = application::generatePassword ($this->settings['passwordResetTokenLength']);
+		$validationToken = application::generatePassword ($this->settings['validationTokenLength']);
 		
 		# Insert the new user
-		$insertData = array ('email' => $result['email'], 'password' => $passwordHashed, 'validationToken' => $token);
+		$insertData = array ('email' => $result['email'], 'password' => $passwordHashed, 'validationToken' => $validationToken);
 		$this->databaseConnection->insert ($this->settings['database'], $this->settings['table'], $insertData);
 		
 		# Confirm and invite the user to login
@@ -406,7 +405,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo validate the account, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$token}/";
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$validationToken}/";
 		$message .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -520,16 +519,16 @@ class userAccount
 		}
 		
 		# Create a token
-		$token = application::generatePassword ($this->settings['passwordResetTokenLength']);
+		$validationToken = application::generatePassword ($this->settings['validationTokenLength']);
 		
 		# Write the token into the database for this user
-		$updateData = array ('passwordreset' => $token);
+		$updateData = array ('validationToken' => $validationToken);
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $user['email']));
 		
 		# Assemble the message
 		$message  = "\nA request to change your password on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo create a new password, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageResetpassword']}{$token}/";
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageResetpassword']}{$validationToken}/";
 		$message .= "\n\n\nIf you did not request a new password, do not worry - your password has not been changed. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -574,7 +573,7 @@ class userAccount
 		$passwordHashed = $this->hashedString ($result['password'], $result['email']);
 		
 		# Update the password in the database
-		$updateData = array ('password' => $passwordHashed, 'passwordreset' => NULL);
+		$updateData = array ('password' => $passwordHashed, 'validationToken' => NULL);
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $result['email']));
 		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
 		
@@ -596,7 +595,7 @@ class userAccount
 		# In password reset mode, i.e. where a token has been supplied, prefill the e-mail address field; note that an unvalidated account is fine, because this the reset token has come from an e-mail anyway
 		$prefillEmail = false;
 		if ($tokenConfirmation) {
-			if ($prefill = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('passwordreset' => $tokenConfirmation))) {
+			if ($prefill = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('validationToken' => $tokenConfirmation))) {
 				$prefillEmail = $prefill['email'];
 			}
 		}
@@ -646,7 +645,7 @@ class userAccount
 						
 						# In password reset mode, i.e. where a token has been supplied, check that both the e-mail and token are correct; note that an unvalidated account is fine, because this the reset token has come from an e-mail anyway
 						if ($tokenConfirmation) {
-							$match = array ('email' => $unfinalisedData['email'], 'passwordreset' => $tokenConfirmation);
+							$match = array ('email' => $unfinalisedData['email'], 'validationToken' => $tokenConfirmation);
 							if (!$this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
 								$form->registerProblem ('failure', "The token in the URL and e-mail address did not match. Please check the link in the e-mail has been followed correctly, and that you have entered your e-mail address correctly.");
 							}
@@ -704,7 +703,7 @@ class userAccount
 		$passwordHashed = $this->hashedString ($password, $email);
 		
 		# Authenticate the credentials
-		$isValid = (($passwordHashed == $user['password']) && !strlen ($user['validationToken']));
+		$isValid = (($passwordHashed == $user['password']) && $user['validatedAt']);
 		
 		# End if credentials not valid
 		if (!$isValid) {
