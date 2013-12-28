@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.2.2
+# Version 1.2.3
 
 
 # Class to provide user login
@@ -13,15 +13,15 @@ class userAccount
 	private $defaults = array (
 		'namespace'							=> 'UserAccount',
 		'baseUrl'							=> '',
-		'loginUrl'							=> '/login/',				// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
-		'logoutUrl'							=> '/login/logout.html',	// after baseUrl
+		'loginUrl'							=> '/login/',					// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
+		'logoutUrl'							=> '/login/logout/',		// after baseUrl
 		'salt'								=> NULL,
 		'brandname'							=> false,
 		'autoLogoutTime'					=> 86400,
 		'database'							=> NULL,
 		'table'								=> 'users',
-		'pageRegister'						=> 'register.html',
-		'pageResetpassword'					=> 'resetpassword.html',
+		'pageRegister'						=> '/login/register/',		// after baseUrl
+		'pageResetpassword'					=> '/login/resetpassword/',	// after baseUrl
 		'applicationName'					=> NULL,
 		'administratorEmail'				=> NULL,
 		'passwordResetTokenLength'			=> 12,
@@ -178,8 +178,8 @@ class userAccount
 			# If returnto is set to one of the internal pages (e.g. the user has clicked on a top-right login link while on the reset password page), avoid redirecting back to that internal page, to avoid confusion
 			if ($returnto) {
 				$avoidReturnto = array (
-					$this->baseUrl . '/' . $this->settings['pageResetpassword'],
-					$this->baseUrl . '/' . $this->settings['pageRegister'],
+					$this->baseUrl . $this->settings['pageResetpassword'],
+					$this->baseUrl . $this->settings['pageRegister'],
 				);
 				if (in_array ($returnto, $avoidReturnto)) {
 					$returnto = $this->baseUrl . '/';
@@ -323,7 +323,7 @@ class userAccount
 			'name' => false,
 			'autofocus' => true,
 		));
-		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . '/' . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br /><a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br /><br />');
+		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br /><a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br /><br />');
 		$form->email (array (
 			'name'			=> 'email',
 			'title'			=> 'E-mail address',
@@ -406,7 +406,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo validate the account, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}/{$this->settings['pageRegister']}?token=" . $token . '&email=' . htmlspecialchars (rawurlencode ($result['email']));
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}?token=" . $token . '&email=' . htmlspecialchars (rawurlencode ($result['email']));
 		$message .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -516,7 +516,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to change your password on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo create a new password, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}/{$this->settings['pageResetpassword']}?token={$token}";
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageResetpassword']}?token={$token}";
 		$message .= "\n\n\nIf you did not request a new password, do not worry - your password has not been changed. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -625,7 +625,7 @@ class userAccount
 						if (!$tokenConfirmation) {
 							$match = array ('email' => $unfinalisedData['email']);
 							if ($this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
-								$form->registerProblem ('failure', "There is already an account registered with this address. If you have forgotten the password, you can apply to <a href=\"{$this->baseUrl}/{$this->settings['pageResetpassword']}?email=" . htmlspecialchars (rawurlencode ($unfinalisedData['email'])) . "\">reset the password</a>.");
+								$form->registerProblem ('failure', "There is already an account registered with this address. If you have forgotten the password, you can apply to <a href=\"{$this->baseUrl}{$this->settings['pageResetpassword']}?email=" . htmlspecialchars (rawurlencode ($unfinalisedData['email'])) . "\">reset the password</a>.");
 							}
 						}
 						
@@ -693,7 +693,7 @@ class userAccount
 		
 		# End if credentials not valid
 		if (!$isValid) {
-			$message = 'The e-mail/password pair you provided did not match any registered and validated account. <a href="' . $this->baseUrl . '/' . $this->settings['pageResetpassword'] . '?email=' . htmlspecialchars (rawurlencode ($email)) . '">Reset your password</a> if you have forgotten it.';
+			$message = 'The e-mail/password pair you provided did not match any registered and validated account. <a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . '?email=' . htmlspecialchars (rawurlencode ($email)) . '">Reset your password</a> if you have forgotten it.';
 			return false;
 		}
 		
