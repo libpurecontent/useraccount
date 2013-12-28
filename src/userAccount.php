@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.2.4
+# Version 1.2.5
 
 
 # Class to provide user login
@@ -212,15 +212,15 @@ class userAccount
 	# Function to write the login into the session
 	private function doLogin ($userId, $email)
 	{
+		# Log that the user has logged in
+		$updateData = array ('lastLoggedInAt' => 'NOW()');
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $email));
+		
 		# Write the values into the session
 		$_SESSION[$this->settings['namespace']]['userId'] = $userId;
 		$_SESSION[$this->settings['namespace']]['email'] = $email;
 		$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
 		$_SESSION[$this->settings['namespace']]['timestamp'] = time ();
-		
-		# Log that the user has logged in
-		$updateData = array ('lastLoggedInAt' => 'NOW()');
-		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $email));
 	}
 	
 	
@@ -341,7 +341,7 @@ class userAccount
 					if (application::validEmail ($unfinalisedData['email'])) {	// #!# This restatement of logic is a bit hacky
 						
 						# Check the data and, if there is a failure inject a failure into the form processing
-						if (!$accountDetails = $this->getUser ($unfinalisedData['email'], $unfinalisedData['password'], $message)) {
+						if (!$accountDetails = $this->getValidatedUser ($unfinalisedData['email'], $unfinalisedData['password'], $message)) {
 							$form->registerProblem ('failure', $message);
 						}
 					}
@@ -427,12 +427,12 @@ class userAccount
 		
 		# Ensure a token has been supplied
 		if (!isSet ($_GET['token']) || !strlen ($_GET['token'])) {
-			$html .= "<p>No token was supplied in the link you are using. Please check the link given in the e-mail and try again.</p>";
+			$html .= "<p>The link you used appears to be invalid. Please check the link given in the e-mail and try again.</p>";
 			$this->html = $html;
 			return false;
 		}
 		
-		# Validate the token and e-mail combination
+		# Validate the token and get the user's account details
 		$match = array ('validationToken' => $_GET['token']);
 		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, array ('id', 'email'))) {
 			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
@@ -440,19 +440,30 @@ class userAccount
 			return;	// End here; take no action
 		}
 		
-		# Wipe out the validation token and log the validation time
-		$updateData = array ('validationToken' => NULL, 'validatedAt' => 'NOW()');
-		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('id' => $accountDetails['id']));
+		# Set the account as validated
+		$html .= $this->setAccountValidated ($accountDetails['id']);
 		
 		# Log the user in
 		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
-		
-		# Confirm success
-		$html .= "\n<p><strong>Your account has now been validated - many thanks for registering.</strong></p>";
 		$html .= "\n<p>You are now logged in with the new password.</p>";
 		
 		# Register the HTML
 		$this->html .= $html;
+	}
+	
+	
+	# Function to set an account as validated
+	private function setAccountValidated ($userId)
+	{
+		# Set the user as validated, by wiping out the validation token and logging the validation time
+		$updateData = array ('validationToken' => NULL, 'validatedAt' => 'NOW()');
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('id' => $userId));
+		
+		# Assemble the HTML
+		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your account has now been validated - many thanks for registering.</strong></p>';
+		
+		# Return the HTML
+		return $html;
 	}
 	
 	
@@ -462,8 +473,15 @@ class userAccount
 		# Determine if the user is already logged-in
 		$loggedInUsername = $this->getUserId ();
 		
+		# If there is a signed-in user, prevent reset
+		if ($this->getUserId ()) {
+			$html  = "\n<p>You cannot reset a password while {$this->settings['loggedInText']}. Please <a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\">{$this->settings['logoutText']}</a> first.</p>";
+			$this->html .= $html;
+			return false;
+		}
+		
 		# If a token is supplied, or the user is currently logged in, divert to the reset form
-		if (isSet ($_GET['token']) || $loggedInUsername) {return $this->newPasswordChangePage ();}
+		if (isSet ($_GET['token'])) {return $this->newPasswordChangePage ();}
 		
 		# Start the HTML
 		$html  = '';
@@ -529,16 +547,9 @@ class userAccount
 		# Start the HTML
 		$html  = '';
 		
-		# If there is a signed-in user, prevent registration
-		if ($this->getUserId ()) {
-			$html  = "\n<p>You cannot reset a password while {$this->settings['loggedInText']}. Please <a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\">{$this->settings['logoutText']}</a> first.</p>";
-			$this->html .= $html;
-			return false;
-		}
-		
 		# Ensure a token has been supplied
 		if (!isSet ($_GET['token']) || !strlen ($_GET['token'])) {
-			$html .= "<p>No token was supplied in the link you are using. Please check the link given in the e-mail and try again.</p>";
+			$html .= "<p>The link you used appears to be invalid. Please check the link given in the e-mail and try again.</p>";
 			$this->html = $html;
 			return false;
 		}
@@ -546,19 +557,29 @@ class userAccount
 		# Show the form (which will write to $this->html)
 		if (!$result = $this->formUsernamePassword ($_GET['token'])) {return false;}
 		
+		# Get the user's account details
+		$match = array ('email' => $result['email']);
+		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, array ('id', 'email', 'validatedAt'))) {
+		$html .= "<p>There was a problem fetching your account details. Please try again later.</p>";
+			$this->html .= $html;
+			return;	// End here; take no action
+		}
+		
+		# Set the account as validated if not already; this would happen if the user has not validated it, then gone to the password reset page, followed the link in the e-mail correctly, and reached this point - which is equivalent to validation
+		if (!$accountDetails['validatedAt']) {
+			$html .= $this->setAccountValidated ($accountDetails['id']);
+		}
+		
 		# Hash the password
 		$passwordHashed = $this->hashedString ($result['password'], $result['email']);
 		
-		# Update the password in the database; if the user never validated the account, validate it, because this process has proven that the user has an e-mail address
-		$insertData = array ('password' => $passwordHashed, 'passwordreset' => NULL, 'validationToken' => NULL);
-		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $insertData, array ('email' => $result['email']));
+		# Update the password in the database
+		$updateData = array ('password' => $passwordHashed, 'passwordreset' => NULL);
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $result['email']));
+		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
 		
 		# Log the user in
-		$accountDetails = $this->getUser ($result['email'], $result['password']);
 		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
-		
-		# Confirm and invite the user to login
-		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
 		$html .= "\n<p>You are now logged in with the new password.</p>";
 		
 		# Register the HTML
@@ -625,7 +646,7 @@ class userAccount
 						
 						# In password reset mode, i.e. where a token has been supplied, check that both the e-mail and token are correct; note that an unvalidated account is fine, because this the reset token has come from an e-mail anyway
 						if ($tokenConfirmation) {
-							$match = array ('email' => $unfinalisedData['email'], 'passwordreset' => $tokenConfirmation, );
+							$match = array ('email' => $unfinalisedData['email'], 'passwordreset' => $tokenConfirmation);
 							if (!$this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
 								$form->registerProblem ('failure', "The token in the URL and e-mail address did not match. Please check the link in the e-mail has been followed correctly, and that you have entered your e-mail address correctly.");
 							}
@@ -674,7 +695,7 @@ class userAccount
 	
 	
 	# Check credentials
-	private function getUser ($email, $password, &$message = '')
+	private function getValidatedUser ($email, $password, &$message = '')
 	{
 		# Get the data row for this username
 		$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('email' => $email));
