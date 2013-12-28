@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.2.3
+# Version 1.2.4
 
 
 # Class to provide user login
@@ -24,7 +24,7 @@ class userAccount
 		'pageResetpassword'					=> '/login/resetpassword/',	// after baseUrl
 		'applicationName'					=> NULL,
 		'administratorEmail'				=> NULL,
-		'passwordResetTokenLength'			=> 12,
+		'passwordResetTokenLength'			=> 24,
 		'loginText'							=> 'log in',
 		'loggedInText'						=> 'logged in',
 		'logoutText'						=> 'log out',
@@ -384,7 +384,7 @@ class userAccount
 		}
 		
 		# If a token is supplied, go to the validation page
-		if (isSet ($_GET['token']) || isSet ($_GET['email'])) {return $this->registerValidationPage ();}
+		if (isSet ($_GET['token'])) {return $this->registerValidationPage ();}
 		
 		# Show the form (which will write to $this->html)
 		if (!$result = $this->formUsernamePassword ()) {return false;}
@@ -406,7 +406,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo validate the account, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}?token=" . $token . '&email=' . htmlspecialchars (rawurlencode ($result['email']));
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$token}/";
 		$message .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -425,20 +425,15 @@ class userAccount
 		# Start the HTML
 		$html  = '';
 		
-		# Ensure a token and e-mail have been supplied
+		# Ensure a token has been supplied
 		if (!isSet ($_GET['token']) || !strlen ($_GET['token'])) {
 			$html .= "<p>No token was supplied in the link you are using. Please check the link given in the e-mail and try again.</p>";
 			$this->html = $html;
 			return false;
 		}
-		if (!isSet ($_GET['email']) || !strlen ($_GET['email'])) {
-			$html .= "<p>No e-mail adddress was supplied in the link you are using. Please check the link given in the e-mail and try again.</p>";
-			$this->html = $html;
-			return false;
-		}
 		
 		# Validate the token and e-mail combination
-		$match = array ('validationToken' => $_GET['token'], 'email' => $_GET['email']);
+		$match = array ('validationToken' => $_GET['token']);
 		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, array ('id', 'email'))) {
 			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
 			$this->html .= $html;
@@ -447,7 +442,7 @@ class userAccount
 		
 		# Wipe out the validation token and log the validation time
 		$updateData = array ('validationToken' => NULL, 'validatedAt' => 'NOW()');
-		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $_GET['email']));
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('id' => $accountDetails['id']));
 		
 		# Log the user in
 		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
@@ -516,7 +511,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to change your password on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo create a new password, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageResetpassword']}?token={$token}";
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageResetpassword']}{$token}/";
 		$message .= "\n\n\nIf you did not request a new password, do not worry - your password has not been changed. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -547,7 +542,6 @@ class userAccount
 			$this->html = $html;
 			return false;
 		}
-		// Note that the token is only checked below, when the user has also entered an e-mail address, which makes this much harder to crack
 		
 		# Show the form (which will write to $this->html)
 		if (!$result = $this->formUsernamePassword ($_GET['token'])) {return false;}
