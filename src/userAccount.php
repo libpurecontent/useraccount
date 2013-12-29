@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.3.0
+# Version 1.3.1
 
 
 # Class to provide user login
@@ -22,6 +22,7 @@ class userAccount
 		'table'								=> 'users',
 		'pageRegister'						=> '/login/register/',			// after baseUrl
 		'pageResetpassword'					=> '/login/resetpassword/',		// after baseUrl
+		'pageAccountdetails'				=> '/login/accountdetails/',    // after baseUrl
 		'applicationName'					=> NULL,
 		'administratorEmail'				=> NULL,
 		'validationTokenLength'				=> 24,
@@ -355,7 +356,7 @@ class userAccount
 		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br /><a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br /><br />');
 		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
 		$form->{$widgetType} (array (
-			'name'			=> 'identifier',
+			'name'			=> 'email',		// Retained this name so that browsers auto-fill
 			'title'			=> 'E-mail address' . ($this->settings['usernames'] ? ' or username' : ''),
 			'required'		=> true,
 			'default'		=> (isSet ($_GET['email']) ? rawurldecode ($_GET['email']) : false),
@@ -366,12 +367,12 @@ class userAccount
 			'required'		=> true,
 		));
 		if ($unfinalisedData = $form->getUnfinalisedData ()) {
-			if (isSet ($unfinalisedData['identifier']) && isSet ($unfinalisedData['password'])) {
-				if (strlen ($unfinalisedData['identifier']) && strlen ($unfinalisedData['password'])) {
-					if (strlen ($unfinalisedData['identifier'])) {
+			if (isSet ($unfinalisedData['email']) && isSet ($unfinalisedData['password'])) {
+				if (strlen ($unfinalisedData['email']) && strlen ($unfinalisedData['password'])) {
+					if (strlen ($unfinalisedData['email'])) {
 						
 						# Check the data and, if there is a failure inject a failure into the form processing
-						if (!$accountDetails = $this->getValidatedUser ($unfinalisedData['identifier'], $unfinalisedData['password'], $message)) {
+						if (!$accountDetails = $this->getValidatedUser ($unfinalisedData['email'], $unfinalisedData['password'], $message)) {
 							$form->registerProblem ('failure', $message);
 						}
 					}
@@ -534,7 +535,7 @@ class userAccount
 		$form->heading ('p', "You can use this form to reset your password.</p>\n<p>Enter your e-mail address" . ($this->settings['usernames'] ? ' or username' : '') . ' below. If it has been registered, instructions on resetting your password will be sent by e-mail.');
 		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
 		$form->$widgetType (array (
-			'name'			=> 'identifier',
+			'name'			=> 'email',		// Retained this name so that browsers auto-fill
 			'title'			=> 'E-mail address' . ($this->settings['usernames'] ? ' or username' : ''),
 			'required'		=> true,
 			'editable'		=> (!$loggedInUsername),
@@ -546,7 +547,7 @@ class userAccount
 		}
 		
 		# Determine if the identifier is an e-mail or username, and create a description of it
-		$identifierIsEmail = (substr_count ($result['identifier'], '@'));
+		$identifierIsEmail = (substr_count ($result['email'], '@'));
 		$identifierDescription = ($identifierIsEmail ? 'e-mail' : 'username');
 		
 		# State that an e-mail may have been sent
@@ -555,7 +556,7 @@ class userAccount
 		
 		# Lookup the account details
 		$identifierField = ($identifierIsEmail ? 'email' : 'username');
-		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ($identifierField => $result['identifier']))) {
+		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ($identifierField => $result['email']))) {
 			$this->html .= $html;
 			return;	// End here; take no action
 		}
@@ -808,6 +809,142 @@ class userAccount
 		
 		# Return the user
 		return $userFiltered;
+	}
+	
+	
+	# Page to change account details
+	public function accountdetails ()
+	{
+		# Start the HTML
+		$html  = '';
+		
+		# Ensure the user is logged in
+		if (!$userId = $this->getUserId ()) {
+			$html  = "\n" . '<p>You must <a href="' . $this->baseUrl . $this->settings['loginUrl'] . '?' . $this->baseUrl . $this->settings['pageAccountdetails'] . '">' . $this->settings['loginText'] . '</a> first, if you wish to change account details.</p>';
+			$this->html .= $html;
+			return false;
+		}
+		
+		# Get the initial details of the current user
+		$userEmail = $this->getUserEmail ();
+		$userUsername = $this->getUserUsername ();
+		
+		# Define an introduction to the form
+		$introductionHtml = "\n<p>If you wish to change any of your account details, enter the changes below.</p>";
+		
+		# Show the form
+		require_once ('ultimateForm.php');
+		$form = new form (array (
+			'displayRestrictions' 	=> false,
+			'formCompleteText' 	=> false,
+			'div' => 'accountdetails ultimateform horizontalonly',
+			'unsavedDataProtection' => true,
+			'reappear' => true,
+		));
+		$form->email (array (
+			'name'			=> 'email',
+			'title'			=> 'E-mail address',
+			'size'			=> 50,
+			'default'		=> $userEmail,
+			'required'		=> true,
+			'editable'		=> false,
+		));
+		if ($this->settings['usernames']) {
+			$form->input (array (
+				'name'			=> 'username',
+				'title'			=> 'Username',
+				'required'		=> true,
+				'default'		=> $userUsername,
+				'maxlength'		=> 30,
+				'size'			=> 20,
+				'regexp'		=> $this->settings['usernameRegexp'],
+				'description'	=> $this->settings['usernameRegexpDescription'],
+			));
+		}
+		$form->password (array (
+			'name'			=> 'newpassword',		/* Non-standard name avoids browser auto-filling */
+			'title'			=> 'Change password',
+			'confirmation'	=> true,
+		));
+		$form->password (array ( 
+			'name'			=> 'currentpassword',
+			'title'			=> 'Your current password, to make changes',
+			'description'	=> '<strong>Please enter your current password, for security, to make changes above.</strong>',
+			'required'		=> true,
+			'size'			=> 20,
+			'maxlength'		=> 128,
+			'discard'		=> true,
+		));
+		
+		# Do checks on the submitted data
+		if ($unfinalisedData = $form->getUnfinalisedData ()) {
+			
+			# Authenticate the account
+			if (strlen ($unfinalisedData['currentpassword'])) {
+				if (!$accountDetails = $this->getValidatedUser ($userEmail, $unfinalisedData['currentpassword'])) {
+					$form->registerProblem ('failure', 'The current password you provided was not correct. Please correct it and try again.', 'password');
+				}
+			}
+			
+			# If a new username is proposed, check its availability
+			if ($this->settings['usernames']) {
+				if (strlen ($unfinalisedData['username'])) {
+					if ($unfinalisedData['username'] != $userUsername) {
+						$match = array ('username' => $unfinalisedData['username']);
+						if ($this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
+							$form->registerProblem ('emailfailure', 'The username <em>' . htmlspecialchars ($unfinalisedData['username']) . '</em> has been taken already - please choose another.');
+						}
+					}
+				}
+			}
+		}
+		
+		# Process the form
+		if (!$result = $form->process ($html)) {
+			$html = $introductionHtml . $html;
+			$this->html .= $html;
+			return false;
+		}
+		
+		# Determine what is to be updated
+		$updates = array ();
+		if ($this->settings['usernames']) {
+			if (strlen ($result['username'])) {
+				$updates['username'] = $result['username'];
+			}
+		}
+		if (strlen ($result['newpassword'])) {
+			$updates['password'] = $this->hashedString ($result['newpassword'], $userEmail);
+		}
+		
+		# End if no updates
+		if (!$updates) {
+			$this->html .= $html;
+			return;
+		}
+		
+		# Perform the update
+		if (!$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updates, $conditions = array ('id' => $userId))) {
+			$html = "\n<p>The details were not changed, as a problem occured. Please contact the Webmaster.</p>";
+			$this->html = $html;
+			return;
+		}
+		
+		# Make the new name usable straight away
+		if ($this->settings['usernames']) {
+			if (isSet ($updates['username'])) {
+				$_SESSION[$this->settings['namespace']]['username'] = $result['username'];
+			}
+		}
+		
+		# Confirm success, prepending this to the HTML
+		$confirmationHtml .= "\n" . '<div class="graybox">';
+		$confirmationHtml .= "\n\t" . '<p><img src="/images/icons/tick.png" /> <strong>Your profile details have been updated.</strong></p>';
+		$confirmationHtml .= "\n" . '</div>';
+		$html = $confirmationHtml . $html;
+		
+		# Register the HTML
+		$this->html .= $html;
 	}
 }
 
