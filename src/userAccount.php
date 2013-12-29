@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.2.6
+# Version 1.3.0
 
 
 # Class to provide user login
@@ -14,14 +14,14 @@ class userAccount
 		'namespace'							=> 'UserAccount',
 		'baseUrl'							=> '',
 		'loginUrl'							=> '/login/',					// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
-		'logoutUrl'							=> '/login/logout/',		// after baseUrl
+		'logoutUrl'							=> '/login/logout/',			// after baseUrl
 		'salt'								=> NULL,
 		'brandname'							=> false,
 		'autoLogoutTime'					=> 86400,
 		'database'							=> NULL,
 		'table'								=> 'users',
-		'pageRegister'						=> '/login/register/',		// after baseUrl
-		'pageResetpassword'					=> '/login/resetpassword/',	// after baseUrl
+		'pageRegister'						=> '/login/register/',			// after baseUrl
+		'pageResetpassword'					=> '/login/resetpassword/',		// after baseUrl
 		'applicationName'					=> NULL,
 		'administratorEmail'				=> NULL,
 		'validationTokenLength'				=> 24,
@@ -31,6 +31,9 @@ class userAccount
 		'loggedOutText'						=> 'logged out',
 		'passwordMinimumLength'				=> 6,
 		'passwordRequiresLettersAndNumbers'	=> true,
+		'usernames'							=> false,
+		'usernameRegexp'					=> '^([a-z0-9]{5,})$',
+		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. NO capital letters allowed.',
 	);
 	
 	# Class properties
@@ -39,9 +42,15 @@ class userAccount
 	# Database structure definition
 	public function databaseStructure ()
 	{
-		return "
+		# Determine optional parts
+		$username = ($this->settings['usernames'] ? "`username` varchar(30) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Username'," : '');
+		$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
+		
+		# Assemble the SQL
+		$sql = "
 		CREATE TABLE IF NOT EXISTS `{$this->settings['table']}` (
 		  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Automatic key',
+		  {$username}
 		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
 		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
 		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation or password reset',
@@ -49,9 +58,13 @@ class userAccount
 		  `validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
 		  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
 		  PRIMARY KEY (`id`),
+		  {$usernameIndex}
 		  UNIQUE KEY `email` (`email`)
 		) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Users';
 		";
+		
+		# Return the SQL
+		return $sql;
 	}
 	
 	
@@ -110,7 +123,7 @@ class userAccount
 	}
 	
 	
-	# Public accessor to get the username
+	# Public accessor to get the e-mail address
 	public function getUserEmail ()
 	{
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
@@ -118,6 +131,20 @@ class userAccount
 		
 		# Return the e-mail address
 		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['email'] : false);
+	}
+	
+	
+	# Public accessor to get the username
+	public function getUserUsername ()
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['usernames']) {return NULL;}
+		
+		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
+		$this->doSessionChecks ();
+		
+		# Return the username
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['username'] : false);
 	}
 	
 	
@@ -155,7 +182,7 @@ class userAccount
 			if ($accountDetails = $this->loginForm ()) {
 				
 				# Accept the login, i.e. write into the session
-				$this->doLogin ($accountDetails['id'], $accountDetails['email']);
+				$this->doLogin ($accountDetails);
 				
 				# Take the user to the same page in order to clear the form's POSTed variables and thereby prevent confusion in cases of refreshed pages
 				$location = $_SERVER['REQUEST_URI'];
@@ -209,15 +236,18 @@ class userAccount
 	
 	
 	# Function to write the login into the session
-	private function doLogin ($userId, $email)
+	private function doLogin ($accountDetails)
 	{
 		# Log that the user has logged in
 		$updateData = array ('lastLoggedInAt' => 'NOW()');
-		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $email));
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $accountDetails['email']));
 		
 		# Write the values into the session
-		$_SESSION[$this->settings['namespace']]['userId'] = $userId;
-		$_SESSION[$this->settings['namespace']]['email'] = $email;
+		$_SESSION[$this->settings['namespace']]['userId'] = $accountDetails['id'];
+		$_SESSION[$this->settings['namespace']]['email'] = $accountDetails['email'];
+		if ($this->settings['usernames']) {
+			$_SESSION[$this->settings['namespace']]['username'] = $accountDetails['username'];
+		}
 		$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
 		$_SESSION[$this->settings['namespace']]['timestamp'] = time ();
 	}
@@ -323,9 +353,10 @@ class userAccount
 			'autofocus' => true,
 		));
 		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br /><a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br /><br />');
-		$form->email (array (
-			'name'			=> 'email',
-			'title'			=> 'E-mail address',
+		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
+		$form->{$widgetType} (array (
+			'name'			=> 'identifier',
+			'title'			=> 'E-mail address' . ($this->settings['usernames'] ? ' or username' : ''),
 			'required'		=> true,
 			'default'		=> (isSet ($_GET['email']) ? rawurldecode ($_GET['email']) : false),
 		));
@@ -335,12 +366,12 @@ class userAccount
 			'required'		=> true,
 		));
 		if ($unfinalisedData = $form->getUnfinalisedData ()) {
-			if (isSet ($unfinalisedData['email']) && isSet ($unfinalisedData['password'])) {
-				if (strlen ($unfinalisedData['email']) && strlen ($unfinalisedData['password'])) {
-					if (application::validEmail ($unfinalisedData['email'])) {	// #!# This restatement of logic is a bit hacky
+			if (isSet ($unfinalisedData['identifier']) && isSet ($unfinalisedData['password'])) {
+				if (strlen ($unfinalisedData['identifier']) && strlen ($unfinalisedData['password'])) {
+					if (strlen ($unfinalisedData['identifier'])) {
 						
 						# Check the data and, if there is a failure inject a failure into the form processing
-						if (!$accountDetails = $this->getValidatedUser ($unfinalisedData['email'], $unfinalisedData['password'], $message)) {
+						if (!$accountDetails = $this->getValidatedUser ($unfinalisedData['identifier'], $unfinalisedData['password'], $message)) {
 							$form->registerProblem ('failure', $message);
 						}
 					}
@@ -358,7 +389,7 @@ class userAccount
 		# Register the HTML
 		$this->html .= $html;
 		
-		# Return the e-mail address
+		# Return the account details
 		return $accountDetails;
 	}
 	
@@ -389,14 +420,17 @@ class userAccount
 		if (!$result = $this->formUsernamePassword ()) {return false;}
 		
 		# Hash the password
-		$passwordHashed = $this->hashedString ($result['password'], $result['email']);
+		$result['password'] = $this->hashedString ($result['password'], $result['email']);
 		
-		# Create a token
-		$validationToken = application::generatePassword ($this->settings['validationTokenLength']);
+		# Add in a validation token
+		$result['validationToken'] = application::generatePassword ($this->settings['validationTokenLength']);
 		
 		# Insert the new user
-		$insertData = array ('email' => $result['email'], 'password' => $passwordHashed, 'validationToken' => $validationToken);
-		$this->databaseConnection->insert ($this->settings['database'], $this->settings['table'], $insertData);
+		if (!$this->databaseConnection->insert ($this->settings['database'], $this->settings['table'], $result)) {
+			$html .= "\n<p>There was a problem creating the account. Please try again later.</p>";
+			$this->html .= $html;
+			return;
+		}
 		
 		# Confirm and invite the user to login
 		$html .= "\n<p><strong>Please now check your e-mail account (" . htmlspecialchars ($result['email']) . ') to validate the account.</strong></p>';
@@ -405,7 +439,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo validate the account, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$validationToken}/";
+		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$result['validationToken']}/";
 		$message .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -433,7 +467,9 @@ class userAccount
 		
 		# Validate the token and get the user's account details
 		$match = array ('validationToken' => $_GET['token']);
-		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, array ('id', 'email'))) {
+		$fields = array ('id', 'email');
+		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, $fields)) {
 			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
 			$this->html .= $html;
 			return;	// End here; take no action
@@ -443,8 +479,8 @@ class userAccount
 		$html .= $this->setAccountValidated ($accountDetails['id']);
 		
 		# Log the user in
-		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
-		$html .= "\n<p>You are now logged in with the new password.</p>";
+		$this->doLogin ($accountDetails);
+		$html .= "\n" . '<p><img src="/images/icons/user.png" /> You are now logged in with the new password.</p>';
 		
 		# Register the HTML
 		$this->html .= $html;
@@ -459,7 +495,7 @@ class userAccount
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('id' => $userId));
 		
 		# Assemble the HTML
-		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your account has now been validated - many thanks for registering.</strong></p>';
+		$html = "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your account has now been validated - many thanks for registering.</strong></p>';
 		
 		# Return the HTML
 		return $html;
@@ -495,25 +531,31 @@ class userAccount
 			'name' => false,
 			'autofocus' => true,
 		));
-		$form->heading ('p', "You can use this form to reset your password.</p>\n<p>Enter your e-mail address below. If the e-mail address has been registered, instructions on resetting your password will be sent to it.");
-		$form->email (array (
-			'name'			=> 'email',
-			'title'			=> 'E-mail address',
+		$form->heading ('p', "You can use this form to reset your password.</p>\n<p>Enter your e-mail address" . ($this->settings['usernames'] ? ' or username' : '') . ' below. If it has been registered, instructions on resetting your password will be sent by e-mail.');
+		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
+		$form->$widgetType (array (
+			'name'			=> 'identifier',
+			'title'			=> 'E-mail address' . ($this->settings['usernames'] ? ' or username' : ''),
 			'required'		=> true,
 			'editable'		=> (!$loggedInUsername),
 			'default'		=> ($loggedInUsername ? $loggedInUsername : (isSet ($_GET['email']) ? rawurldecode ($_GET['email']) : false)),
 		));
-		$form->heading ('p', 'If no e-mail comes through after a few tries, it is likely that the original e-mail you gave was invalid. Please check your address and create a new account.');
 		if (!$result = $form->process ($html)) {
 			$this->html .= $html;
 			return;
 		}
 		
+		# Determine if the identifier is an e-mail or username, and create a description of it
+		$identifierIsEmail = (substr_count ($result['identifier'], '@'));
+		$identifierDescription = ($identifierIsEmail ? 'e-mail' : 'username');
+		
 		# State that an e-mail may have been sent
-		$html .= "<p>If that e-mail address has been registered, instructions on resetting your password have been sent to it.</p>";
+		$html .= "\n<p>If that {$identifierDescription} has been registered, instructions on resetting your password have been sent by e-mail.</p>";
+		$html .= "\n<p>If no e-mail comes through after a few tries, it is likely that the {$identifierDescription} you gave was invalid. Please check it, or create a new account.</p>";
 		
 		# Lookup the account details
-		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('email' => $result['email']))) {
+		$identifierField = ($identifierIsEmail ? 'email' : 'username');
+		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ($identifierField => $result['identifier']))) {
 			$this->html .= $html;
 			return;	// End here; take no action
 		}
@@ -533,7 +575,7 @@ class userAccount
 		
 		# Send the e-mail
 		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
-		application::utf8Mail ($result['email'], "Password reset request for {$_SERVER['SERVER_NAME']}", wordwrap ($message), $mailheaders);
+		application::utf8Mail ($user['email'], "Password reset request for {$_SERVER['SERVER_NAME']}", wordwrap ($message), $mailheaders);
 		
 		# Register the HTML
 		$this->html .= $html;
@@ -558,7 +600,9 @@ class userAccount
 		
 		# Get the user's account details
 		$match = array ('email' => $result['email']);
-		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, array ('id', 'email', 'validatedAt'))) {
+		$fields = array ('id', 'email', 'validatedAt');
+		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, $fields)) {
 		$html .= "<p>There was a problem fetching your account details. Please try again later.</p>";
 			$this->html .= $html;
 			return;	// End here; take no action
@@ -575,18 +619,18 @@ class userAccount
 		# Update the password in the database
 		$updateData = array ('password' => $passwordHashed, 'validationToken' => NULL);
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $result['email']));
-		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully changed.</strong></p>';
+		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully set.</strong></p>';
 		
 		# Log the user in
-		$this->doLogin ($accountDetails['id'], $accountDetails['email']);
-		$html .= "\n<p>You are now logged in with the new password.</p>";
+		$this->doLogin ($accountDetails);
+		$html .= "\n" . '<p><img src="/images/icons/user.png" /> You are now logged in with the new password.</p>';
 		
 		# Register the HTML
 		$this->html .= $html;
 	}
 	
 	
-	# Function to create a form with a username and password
+	# Function to create a form with an e-mail, password, and possibly a username
 	private function formUsernamePassword ($tokenConfirmation = false)
 	{
 		# Start the HTML
@@ -612,7 +656,20 @@ class userAccount
 			'autofocus' => true,
 		));
 		if (!$tokenConfirmation) {
-			$form->heading ('p', 'Enter your e-mail address. We will send a confirmation message to this address.');
+			$form->heading ('p', '<strong>Fill in these details to create an account.</strong> ' . ($this->settings['usernames'] ? 'Choose a username, specify' : 'Specify') . ' your e-mail address, and create a password.');
+		}
+		if ($this->settings['usernames']) {
+			if (!$tokenConfirmation) {
+				$form->input (array (
+					'name'			=> 'username',
+					'title'			=> 'Username',
+					'required'		=> true,
+					'maxlength'		=> 30,
+					'size'			=> 20,
+					'regexp'		=> $this->settings['usernameRegexp'],
+					'description'	=> $this->settings['usernameRegexpDescription'],
+				));
+			}
 		}
 		$form->email (array (
 			'name'			=> 'email',
@@ -621,6 +678,7 @@ class userAccount
 			'size'			=> 50,
 			'default'		=> $prefillEmail,
 			'editable'		=> (!$prefillEmail),
+			'description'	=> ($tokenConfirmation ? '' : 'We will send a confirmation message to this address.'),
 		));
 		$form->heading ('p', 'Now ' . ($tokenConfirmation ? 'enter a new password' : 'choose a password') . ", and repeat it to confirm.");
 		$form->password (array (
@@ -635,11 +693,17 @@ class userAccount
 				if (strlen ($unfinalisedData['email']) && strlen ($unfinalisedData['password'])) {
 					if (application::validEmail ($unfinalisedData['email'])) {	// #!# This restatement of logic is a bit hacky
 						
-						# When in account creation mode, check the e-mail address has not already been registered
+						# When in account creation mode, check the e-mail address (and if required the username) has not already been registered
 						if (!$tokenConfirmation) {
 							$match = array ('email' => $unfinalisedData['email']);
 							if ($this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
-								$form->registerProblem ('failure', "There is already an account registered with this address. If you have forgotten the password, you can apply to <a href=\"{$this->baseUrl}{$this->settings['pageResetpassword']}?email=" . htmlspecialchars (rawurlencode ($unfinalisedData['email'])) . "\">reset the password</a>.");
+								$form->registerProblem ('emailfailure', "There is already an account registered with this address. If you have forgotten the password, you can apply to <a href=\"{$this->baseUrl}{$this->settings['pageResetpassword']}?email=" . htmlspecialchars (rawurlencode ($unfinalisedData['email'])) . "\">reset the password</a>.");
+							}
+							if ($this->settings['usernames']) {
+								$match = array ('username' => $unfinalisedData['username']);
+								if ($this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match)) {
+									$form->registerProblem ('emailfailure', "That username has been taken already - please choose another. (If you think you might have already registered but have forgotten the password, you can apply to <a href=\"{$this->baseUrl}{$this->settings['pageResetpassword']}?email=" . htmlspecialchars (rawurlencode ($unfinalisedData['email'])) . "\">reset the password</a>.)");
+								}
 							}
 						}
 						
@@ -694,28 +758,56 @@ class userAccount
 	
 	
 	# Check credentials
-	private function getValidatedUser ($email, $password, &$message = '')
+	private function getValidatedUser ($identifier, $password, &$message = '')
 	{
-		# Get the data row for this username
-		$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ('email' => $email));
+		# Determine if the identifier is an e-mail or username
+		$identifierIsEmail = true;
+		if ($this->settings['usernames']) {
+			$identifierIsEmail = (substr_count ($identifier, '@'));
+		}
+		
+		# Define a description of the identifier
+		$identifierDescription = ($identifierIsEmail ? 'e-mail' : 'username');
+		
+		# Define a message which will be used if validation fails
+		$resetPasswordLink  = $this->baseUrl . $this->settings['pageResetpassword'];
+		if ($identifierIsEmail) {	// If a username has been entered, do not expose the associated e-mail address for the account
+			$resetPasswordLink .= '?email=' . htmlspecialchars (rawurlencode ($identifier));
+		}
+		$failureMessage = "The {$identifierDescription}/password pair you provided did not match any registered account. <a href=\"" . $resetPasswordLink . '">Reset your password</a> if you have forgotten it.';
+		
+		# Get the data row for this identifier
+		$identifierField = ($identifierIsEmail ? 'email' : 'username');
+		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ($identifierField => $identifier))) {
+			$message = $failureMessage;
+			return false;
+		}
 		
 		# Hash the supplied password, so it can be compared against the database string which is also hashed
-		$passwordHashed = $this->hashedString ($password, $email);
+		$passwordHashed = $this->hashedString ($password, $user['email']);
 		
-		# Authenticate the credentials
-		$isValid = (($passwordHashed == $user['password']) && $user['validatedAt']);
+		# Authenticate the credentials, ending if not valid
+		if ($passwordHashed != $user['password']) {
+			$message = $failureMessage;
+			return false;
+		}
 		
-		# End if credentials not valid
-		if (!$isValid) {
-			$message = 'The e-mail/password pair you provided did not match any registered and validated account. <a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . '?email=' . htmlspecialchars (rawurlencode ($email)) . '">Reset your password</a> if you have forgotten it.';
+		# If the credentials are correct, but the account not validated, disallow login, as the user has not yet confirmed they have access to the e-mail they originally specified
+		if (!$user['validatedAt']) {
+			$message = "The account for the {$identifierDescription} you specified has not yet been validated. Please check your e-mail account for the validation link you were sent, or <a href=\"" . $resetPasswordLink . '">request it again</a> if you cannot find it.';
 			return false;
 		}
 		
 		# Filter to id and e-mail fields - all others should be considered internal
-		$user = array ('id' => $user['id'], 'email' => $user['email']);
+		$fields = array ('id', 'email');
+		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+		$userFiltered = array ();
+		foreach ($fields as $field) {
+			$userFiltered[$field] = $user[$field];
+		}
 		
 		# Return the user
-		return $user;
+		return $userFiltered;
 	}
 }
 
