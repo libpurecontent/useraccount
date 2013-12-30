@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.3.1
+# Version 1.3.2
 
 
 # Class to provide user login
@@ -32,9 +32,10 @@ class userAccount
 		'loggedOutText'						=> 'logged out',
 		'passwordMinimumLength'				=> 6,
 		'passwordRequiresLettersAndNumbers'	=> true,
-		'usernames'							=> false,
+		'usernames'							=> false,	// Whether to use usernames (necessary only for social applications, where friendly profile URLs are needed)
 		'usernameRegexp'					=> '^([a-z0-9]{5,})$',
 		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. NO capital letters allowed.',
+		'privileges'						=> false,	// Whether there is a privileges field
 	);
 	
 	# Class properties
@@ -46,6 +47,7 @@ class userAccount
 		# Determine optional parts
 		$username = ($this->settings['usernames'] ? "`username` varchar(30) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Username'," : '');
 		$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
+		$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Privileges'," : '');
 		
 		# Assemble the SQL
 		$sql = "
@@ -54,6 +56,7 @@ class userAccount
 		  {$username}
 		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
 		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
+		  {$privileges}
 		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation or password reset',
 		  `lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
 		  `validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
@@ -146,6 +149,56 @@ class userAccount
 		
 		# Return the username
 		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['username'] : false);
+	}
+	
+	
+	# Public accessor to get the list of available privileges
+	public function getAvailablePrivileges ()
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Get the field spec
+		$fields = $this->databaseConnection->getFields ($this->settings['database'], $this->settings['table']);
+		
+		# Return the list
+		return $fields['privileges']['_values'];
+	}
+	
+	
+	# Public accessor to determine if the user has a privilege
+	public function hasPrivilege ($privilege)
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
+		$this->doSessionChecks ();
+		
+		# Return the status
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? in_array ($privilege, $_SESSION[$this->settings['namespace']]['privileges'], true) : false);
+	}
+	
+	
+	# Public accessor to add a privilege
+	public function addPrivilege ($userId, $privilege)
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Return the result
+		return $this->databaseConnection->addToSet ($this->settings['database'], $this->settings['table'], 'privileges', $privilege, 'id', $userId);
+	}
+	
+	
+	# Public accessor to remove a privilege
+	public function removePrivilege ($userId, $privilege)
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Return the result
+		return $this->databaseConnection->removeFromSet ($this->settings['database'], $this->settings['table'], 'privileges', $privilege, 'id', $userId);
 	}
 	
 	
@@ -248,6 +301,9 @@ class userAccount
 		$_SESSION[$this->settings['namespace']]['email'] = $accountDetails['email'];
 		if ($this->settings['usernames']) {
 			$_SESSION[$this->settings['namespace']]['username'] = $accountDetails['username'];
+		}
+		if ($this->settings['privileges']) {
+			$_SESSION[$this->settings['namespace']]['privileges'] = ($accountDetails['privileges'] ? explode (',', $accountDetails['privileges']) : array ());
 		}
 		$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
 		$_SESSION[$this->settings['namespace']]['timestamp'] = time ();
@@ -470,6 +526,7 @@ class userAccount
 		$match = array ('validationToken' => $_GET['token']);
 		$fields = array ('id', 'email');
 		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+		if ($this->settings['privileges']) {$fields[] = 'privileges';}	// Add privileges if enabled
 		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, $fields)) {
 			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
 			$this->html .= $html;
@@ -603,6 +660,7 @@ class userAccount
 		$match = array ('email' => $result['email']);
 		$fields = array ('id', 'email', 'validatedAt');
 		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+		if ($this->settings['privileges']) {$fields[] = 'privileges';}	// Add privileges if enabled
 		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, $fields)) {
 		$html .= "<p>There was a problem fetching your account details. Please try again later.</p>";
 			$this->html .= $html;
@@ -802,6 +860,7 @@ class userAccount
 		# Filter to id and e-mail fields - all others should be considered internal
 		$fields = array ('id', 'email');
 		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+		if ($this->settings['privileges']) {$fields[] = 'privileges';}	// Add privileges if enabled
 		$userFiltered = array ();
 		foreach ($fields as $field) {
 			$userFiltered[$field] = $user[$field];
