@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.3.2
+# Version 1.4.0
 
 
 # Class to provide user login
@@ -15,7 +15,7 @@ class userAccount
 		'baseUrl'							=> '',
 		'loginUrl'							=> '/login/',					// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
 		'logoutUrl'							=> '/login/logout/',			// after baseUrl
-		'salt'								=> NULL,
+		'salt'								=> false,						// Only needed if there are legacy password hashes in the database which have not been updated
 		'brandname'							=> false,
 		'autoLogoutTime'					=> 86400,
 		'database'							=> NULL,
@@ -109,6 +109,11 @@ class userAccount
 		
 		# Regenerate the session ID
 		session_regenerate_id ($deleteOldSession = true);
+		
+		# Load the password_compat library if password_* functions do not exist; see: https://github.com/ircmaxell/password_compat/
+		if (!defined ('PASSWORD_DEFAULT')) {
+			require_once ('password.php');
+		}
 		
 		// Take no action
 		
@@ -305,7 +310,7 @@ class userAccount
 		if ($this->settings['privileges']) {
 			$_SESSION[$this->settings['namespace']]['privileges'] = ($accountDetails['privileges'] ? explode (',', $accountDetails['privileges']) : array ());
 		}
-		$_SESSION[$this->settings['namespace']]['fingerprint'] = $this->hashedString ($_SERVER['HTTP_USER_AGENT']);
+		$_SESSION[$this->settings['namespace']]['fingerprint'] = md5 ($_SERVER['HTTP_USER_AGENT']);		// md5 merely to condense the string; see: http://stackoverflow.com/a/1221933
 		$_SESSION[$this->settings['namespace']]['timestamp'] = time ();
 	}
 	
@@ -315,7 +320,7 @@ class userAccount
 	{
 		# If the user has presented a session, check the user-agent
 		if (isSet ($_SESSION[$this->settings['namespace']])) {
-			if ($_SESSION[$this->settings['namespace']]['fingerprint'] != $this->hashedString ($_SERVER['HTTP_USER_AGENT'])) {
+			if ($_SESSION[$this->settings['namespace']]['fingerprint'] != md5 ($_SERVER['HTTP_USER_AGENT'])) {
 				$this->killSession ();
 				$this->html .= "\n<p>You have been {$this->settings['loggedOutText']}.</p>";
 			}
@@ -383,13 +388,6 @@ class userAccount
 			$params = session_get_cookie_params ();
 			setcookie (session_name (), '', time () - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
 		}
-	}
-	
-	
-	# Helper function for passwords / user-agent comparison; see http://phpsec.org/articles/2005/password-hashing.html ; note that supplying the e-mail as well makes the salt more complex and therefore means that two users with the same password will have different hashes
-	private function hashedString ($string, $emailAsAdditionalSalt = false)
-	{
-		return hash ('sha512', $this->settings['salt'] . ($emailAsAdditionalSalt ? $emailAsAdditionalSalt : '') . $string);
 	}
 	
 	
@@ -477,7 +475,7 @@ class userAccount
 		if (!$result = $this->formUsernamePassword ()) {return false;}
 		
 		# Hash the password
-		$result['password'] = $this->hashedString ($result['password'], $result['email']);
+		$result['password'] = password_hash ($result['password'], PASSWORD_DEFAULT);
 		
 		# Add in a validation token
 		$result['validationToken'] = application::generatePassword ($this->settings['validationTokenLength']);
@@ -673,7 +671,7 @@ class userAccount
 		}
 		
 		# Hash the password
-		$passwordHashed = $this->hashedString ($result['password'], $result['email']);
+		$passwordHashed = password_hash ($result['password'], PASSWORD_DEFAULT);
 		
 		# Update the password in the database
 		$updateData = array ('password' => $passwordHashed, 'validationToken' => NULL);
@@ -816,7 +814,7 @@ class userAccount
 	}
 	
 	
-	# Check credentials
+	# Check credentials, by supplying the e-mail/username so that the row containing the password can be found, and then matching the password
 	private function getValidatedUser ($identifier, $password, &$message = '')
 	{
 		# Determine if the identifier is an e-mail or username
@@ -842,11 +840,8 @@ class userAccount
 			return false;
 		}
 		
-		# Hash the supplied password, so it can be compared against the database string which is also hashed
-		$passwordHashed = $this->hashedString ($password, $user['email']);
-		
-		# Authenticate the credentials, ending if not valid
-		if ($passwordHashed != $user['password']) {
+		# Verify the password
+		if (!$this->passwordVerify ($password, $user)) {
 			$message = $failureMessage;
 			return false;
 		}
@@ -868,6 +863,44 @@ class userAccount
 		
 		# Return the user
 		return $userFiltered;
+	}
+	
+	
+	# Verify the password - basically a wrapper to password_verify with support for hashes stored as legacy hash(sha512) or manually-salted crypt()
+	private function passwordVerify ($suppliedPassword, $user)
+	{
+		# Verify according to the type of hash in the database
+		switch (true) {
+			
+			# Legacy manually-salted crypt(); currently only 13-character CRYPT_STD_DES hashes supported
+			case ((strlen ($user['password']) == 13) && (substr ($user['password'], 0, 2) == substr ($this->settings['salt'], 0, 2)) && (!preg_match ('/^\$\w{2}\$/', $user['password']))):
+				$suppliedPasswordHashed = crypt ($suppliedPassword, $this->settings['salt']);
+				$correct = ($suppliedPasswordHashed == $user['password']);
+				break;
+				
+			# Legacy hash(sha512) hash; see http://stackoverflow.com/questions/20841766/
+			case (!preg_match ('/^\$\w{2}\$/', $user['password'])):
+				$suppliedPasswordHashed = hash ('sha512', $this->settings['salt'] . $user['email'] . $suppliedPassword);	// http://phpsec.org/articles/2005/password-hashing.html ; note that supplying the e-mail as well makes the salt more complex and therefore means that two users with the same password will have different hashes
+				$correct = ($suppliedPasswordHashed == $user['password']);
+				break;
+				
+			# Modern password_verify (wrapper to crypt)
+			default:
+				$correct = password_verify ($suppliedPassword, $user['password']);
+		}
+		
+		# Return false if authentication failed
+		if (!$correct) {return false;}
+		
+		# Rehash if required
+		if (password_needs_rehash ($user['password'], PASSWORD_DEFAULT)) {
+			$newHash = password_hash ($suppliedPassword, PASSWORD_DEFAULT);
+			$update = array ('password' => $newHash);
+			$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $update, array ('id' => $user['id']));
+		}
+		
+		# Confirm a successful match
+		return true;
 	}
 	
 	
@@ -973,7 +1006,7 @@ class userAccount
 			}
 		}
 		if (strlen ($result['newpassword'])) {
-			$updates['password'] = $this->hashedString ($result['newpassword'], $userEmail);
+			$updates['password'] = password_hash ($result['newpassword'], PASSWORD_DEFAULT);;
 		}
 		
 		# End if no updates
