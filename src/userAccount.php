@@ -3,7 +3,7 @@
 #!# Needs e-mail address change facility
 #!# Needs account deletion facility
 
-# Version 1.4.0
+# Version 1.4.1
 
 
 # Class to provide user login
@@ -40,6 +40,7 @@ class userAccount
 	
 	# Class properties
 	private $html  = '';
+	private $setupError = NULL;
 	
 	# Database structure definition
 	public function databaseStructure ()
@@ -77,7 +78,6 @@ class userAccount
 	{
 		# Load required libraries
 		require_once ('application.php');
-		require_once ('database.php');
 		
 		# Merge in the arguments; note that $errors returns the errors by reference and not as a result from the method
 		if (!$this->settings = application::assignArguments ($errors, $settings, $this->defaults, __CLASS__, NULL, $handleErrors = true)) {return false;}
@@ -85,20 +85,12 @@ class userAccount
 		# Assign the baseUrl
 		$this->baseUrl = $this->settings['baseUrl'];
 		
-		# Obtain the database connection
+		# Obtain the database connection handle
 		if (!$databaseConnection || !$databaseConnection->connection) {
 			$this->setupError = "\n<p class=\"warning\">No valid database connection was supplied. The website administrator needs to fix this problem.</p>";
 			return false;
 		}
 		$this->databaseConnection = $databaseConnection;
-		
-		# Ensure the table exists
-		$this->setupError = false;
-		$tables = $this->databaseConnection->getTables ($this->settings['database']);
-		if (!in_array ($this->settings['table'], $tables)) {
-			$this->setupError = "\n<p class=\"warning\">The login system is not set up properly. The website administrator needs to fix this problem.</p>";
-			return false;
-		}
 		
 		# Lock down PHP session management
 		ini_set ('session.name', 'session');
@@ -110,15 +102,40 @@ class userAccount
 		# Regenerate the session ID
 		session_regenerate_id ($deleteOldSession = true);
 		
-		# Load the password_compat library if password_* functions do not exist; see: https://github.com/ircmaxell/password_compat/
-		if (!defined ('PASSWORD_DEFAULT')) {
-			require_once ('password.php');
-		}
-		
 		// Take no action
 		
 	}
 	
+	
+	# Function to load resources required when a database access is involved; this is not done in the constructor to avoid unecessary overhead when using the get* accessor methods (which generally only require a session)
+	private function init ()
+	{
+		
+		# Load required libraries
+		require_once ('database.php');
+		
+		# Load the password_compat library if password_* functions do not exist; obtain this file from: https://github.com/ircmaxell/password_compat/
+		if (!defined ('PASSWORD_DEFAULT')) {
+			require_once ('password.php');
+		}
+		
+		# Ensure the table exists
+		if ($this->databaseConnection) {
+			$tables = $this->databaseConnection->getTables ($this->settings['database']);
+			if (!in_array ($this->settings['table'], $tables)) {
+				$this->setupError = "\n<p class=\"warning\">The login system is not set up properly. The website administrator needs to fix this problem.</p>";
+			}
+		}
+		
+		# End if a setup error occured
+		if ($this->setupError) {
+			$this->html = $this->setupError;
+			return false;
+		}
+		
+		# Return success
+		return true;
+	}
 	
 	
 	# Public accessor to get the ID
@@ -157,17 +174,18 @@ class userAccount
 	}
 	
 	
-	# Public accessor to get the list of available privileges
-	public function getAvailablePrivileges ()
+	# Status label function
+	public function getStatus ()
 	{
-		# Return NULL if not enabled
-		if (!$this->settings['privileges']) {return NULL;}
+		# If logged in, show the e-mail
+		if (isSet ($_SESSION[$this->settings['namespace']])) {
+			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</a>';
+		} else {
+			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . $this->settings['loginText'] . '</a>';
+		}
 		
-		# Get the field spec
-		$fields = $this->databaseConnection->getFields ($this->settings['database'], $this->settings['table']);
-		
-		# Return the list
-		return $fields['privileges']['_values'];
+		# Return the text
+		return $html;
 	}
 	
 	
@@ -182,6 +200,23 @@ class userAccount
 		
 		# Return the status
 		return (isSet ($_SESSION[$this->settings['namespace']]) ? in_array ($privilege, $_SESSION[$this->settings['namespace']]['privileges'], true) : false);
+	}
+	
+	
+	# Public accessor to get the list of available privileges
+	public function getAvailablePrivileges ()
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
+		# Get the field spec
+		$fields = $this->databaseConnection->getFields ($this->settings['database'], $this->settings['table']);
+		
+		# Return the list
+		return $fields['privileges']['_values'];
 	}
 	
 	
@@ -218,11 +253,8 @@ class userAccount
 	# Session handler, with regenerative IDs and user agent checking
 	public function login ($showStatus = false)
 	{
-		# End if there is a setup error
-		if ($this->setupError) {
-			echo $this->setupError;
-			return false;
-		}
+		# Initialise or end
+		if (!$this->init ()) {return false;}
 		
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
@@ -342,24 +374,12 @@ class userAccount
 	}
 	
 	
-	# Status label function
-	public function getStatus ()
-	{
-		# If logged in, show the e-mail
-		if (isSet ($_SESSION[$this->settings['namespace']])) {
-			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</a>';
-		} else {
-			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . $this->settings['loginText'] . '</a>';
-		}
-		
-		# Return the text
-		return $html;
-	}
-	
-	
 	# Logout function
 	public function logout ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Cache whether the user presented session data
 		$userHadSessionData = (isSet ($_SESSION[$this->settings['namespace']]));
 		
@@ -452,11 +472,8 @@ class userAccount
 	# User account creation page
 	public function register ()
 	{
-		# End if there is a setup error
-		if ($this->setupError) {
-			echo $this->setupError;
-			return false;
-		}
+		# Initialise or end
+		if (!$this->init ()) {return false;}
 		
 		# Start the HTML
 		$html  = '';
@@ -561,6 +578,9 @@ class userAccount
 	# Reset password request page
 	public function resetpassword ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Determine if the user is already logged-in
 		$loggedInUsername = $this->getUserId ();
 		
@@ -907,6 +927,9 @@ class userAccount
 	# Page to change account details
 	public function accountdetails ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Start the HTML
 		$html  = '';
 		
