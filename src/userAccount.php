@@ -1,12 +1,12 @@
 <?php
 
-#!# Needs e-mail address change facility
 #!# Needs account deletion facility
+#!# Needs e-mail address change facility
 
-# Version 1.4.1
+# Version 1.5.0
 
 
-# Class to provide user login
+# Library class to provide user login functionality
 class userAccount
 {
 	# Specify available arguments as defaults or as NULL (to represent a required argument)
@@ -15,11 +15,14 @@ class userAccount
 		'baseUrl'							=> '',
 		'loginUrl'							=> '/login/',					// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
 		'logoutUrl'							=> '/login/logout/',			// after baseUrl
-		'salt'								=> false,						// Only needed if there are legacy password hashes in the database which have not been updated
+		'redirectToAfterLogin'				=> false,						// Redirection if on the login page while in logged-in state; baseUrl will be added in front; %username can be used as a token to represent the username
+		'headingLevel'						=> false,						// Title headings, either a level (e.g. 2 for h2), or false
+		'saltLegacyHashes'					=> false,						// Only needed if there are legacy password hashes in the database which have not been updated
 		'brandname'							=> false,
 		'autoLogoutTime'					=> 86400,
 		'database'							=> NULL,
 		'table'								=> 'users',
+		'jQuery'							=> true,							# If using DHTML features, where to load jQuery from (true = default, or false if already loaded elsewhere on the page) for ultimateForm
 		'pageRegister'						=> '/login/register/',			// after baseUrl
 		'pageResetpassword'					=> '/login/resetpassword/',		// after baseUrl
 		'pageAccountdetails'				=> '/login/accountdetails/',    // after baseUrl
@@ -36,11 +39,14 @@ class userAccount
 		'usernameRegexp'					=> '^([a-z0-9]{5,})$',
 		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. NO capital letters allowed.',
 		'privileges'						=> false,	// Whether there is a privileges field
+		'visibleNames'						=> false,	// Whether there is a visible name field
 	);
 	
 	# Class properties
 	private $html  = '';
+	private $loginMessage = false;
 	private $setupError = NULL;
+	
 	
 	# Database structure definition
 	public function databaseStructure ()
@@ -49,6 +55,7 @@ class userAccount
 		$username = ($this->settings['usernames'] ? "`username` varchar(30) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Username'," : '');
 		$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
 		$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Privileges'," : '');
+		$visibleName = ($this->settings['visibleNames'] ? "`name` varchar(255) COLLATE utf8_unicode_ci NULL COMMENT 'Name'," : '');
 		
 		# Assemble the SQL
 		$sql = "
@@ -57,6 +64,7 @@ class userAccount
 		  {$username}
 		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
 		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
+		  {$visibleName}
 		  {$privileges}
 		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation or password reset',
 		  `lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
@@ -110,7 +118,6 @@ class userAccount
 	# Function to load resources required when a database access is involved; this is not done in the constructor to avoid unecessary overhead when using the get* accessor methods (which generally only require a session)
 	private function init ()
 	{
-		
 		# Load required libraries
 		require_once ('database.php');
 		
@@ -135,6 +142,14 @@ class userAccount
 		
 		# Return success
 		return true;
+	}
+	
+	
+	# Public setter to change setting dynamically after loading
+	public function setSetting ($setting, $value)
+	{
+		# Overwrite the setting
+		$this->settings[$setting] = $value;
 	}
 	
 	
@@ -174,6 +189,22 @@ class userAccount
 	}
 	
 	
+	# Public accessor to get the visible name
+	public function getUserName ($returnUsernameIfNone = false)
+	{
+		# If visible name functionality is not enabled, return the user's username or false
+		if (!$this->settings['visibleNames']) {
+			return ($returnUsernameIfNone ? $this->getUserUsername () : NULL);
+		}
+		
+		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
+		$this->doSessionChecks ();
+		
+		# Return the visible name
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['name'] : ($returnUsernameIfNone ? $this->getUserUsername () : NULL));
+	}
+	
+	
 	# Status label function
 	public function getStatus ()
 	{
@@ -189,6 +220,37 @@ class userAccount
 	}
 	
 	
+	# Function to provide HTML login links that can be used in the page header
+	public function linksHtml ($usernameAppendedHtml = false, $cssClass = 'loginlinks')
+	{
+		# Start a list of links
+		$links = array ();
+		if (isSet ($_SESSION[$this->settings['namespace']])) {	// i.e. if signed in
+			
+			# Use the visible name (which may be the username)
+			$username = $this->getUserUsername (true);
+			$name = $this->getUserUserName (true);
+			
+			# Assemble the links
+			$links[] = "<a href=\"/users/{$username}/\" rel=\"nofollow\" title=\"View your profile\"><span class=\"username\">{$name}</span></a>" . $usernameAppendedHtml;
+			$links[] = "<a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\" rel=\"nofollow\" title=\"Sign out\">Sign out</a>";
+			
+		} else {
+			
+			# Add the returnto link, which here implicitly includes the baseUrl; do not include this if already in the login section
+			$returnTo = (!substr_count ($_SERVER['REQUEST_URI'], $this->settings['loginUrl']) ? htmlspecialchars ('?' . $_SERVER['REQUEST_URI']) : '');
+			$links[] = "<a href=\"{$this->baseUrl}{$this->settings['loginUrl']}{$returnTo}\" rel=\"nofollow\" title=\"Sign in\">Sign in</a>";
+			$links[] = "<a href=\"{$this->baseUrl}{$this->settings['pageRegister']}\" rel=\"nofollow\" title=\"Register for access to various features\">Sign up</a>";
+		}
+		
+		# Compile the HTML
+		$html = application::htmlUl ($links, 0, $cssClass, true, false, false);
+		
+		# Return the HTML
+		return $html;
+	}
+	
+	
 	# Public accessor to determine if the user has a privilege
 	public function hasPrivilege ($privilege)
 	{
@@ -200,6 +262,20 @@ class userAccount
 		
 		# Return the status
 		return (isSet ($_SESSION[$this->settings['namespace']]) ? in_array ($privilege, $_SESSION[$this->settings['namespace']]['privileges'], true) : false);
+	}
+	
+	
+	# Public accessor to get the list of the user's privileges
+	public function getUserPrivileges ()
+	{
+		# Return NULL if not enabled
+		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
+		$this->doSessionChecks ();
+		
+		# Return the array of privileges (or empty array if none)
+		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['privileges'] : array ());
 	}
 	
 	
@@ -250,7 +326,7 @@ class userAccount
 	
 	
 	
-	# Session handler, with regenerative IDs and user agent checking
+	# Login page
 	public function login ($showStatus = false)
 	{
 		# Initialise or end
@@ -262,12 +338,14 @@ class userAccount
 		# Require login if the user has not presented a session
 		if (!isSet ($_SESSION[$this->settings['namespace']])) {
 			
+			/*
 			# Make sure the user is using the official URL for this login page, if embedded
 			if ($_SERVER['SCRIPT_URL'] != $this->baseUrl . $this->settings['loginUrl']) {
 				$redirectto = $this->baseUrl . $this->settings['loginUrl'] . '?' . $_SERVER['SCRIPT_URL'];
-				header ('Location: http://' . $_SERVER['SERVER_NAME'] . $redirectto);
+				header ('Location: ' . $_SERVER['_SITE_URL'] . $redirectto);
 				return true;
 			}
+			*/
 			
 			# Show the login form, and obtain the account details if successfully authenticated
 			if ($accountDetails = $this->loginForm ()) {
@@ -277,7 +355,7 @@ class userAccount
 				
 				# Take the user to the same page in order to clear the form's POSTed variables and thereby prevent confusion in cases of refreshed pages
 				$location = $_SERVER['REQUEST_URI'];
-				header ('Location: http://' . $_SERVER['SERVER_NAME'] . $location);
+				header ('Location: ' . $_SERVER['_SITE_URL'] . $location);
 				$this->html .= "\n<p>You are now logged in. <a href=\"" . htmlspecialchars ($location) . '">Please click here to continue.</a></p>';
 				return true;
 			}
@@ -286,8 +364,15 @@ class userAccount
 		# If logged in, say so
 		if (isSet ($_SESSION[$this->settings['namespace']])) {
 			
-			# If a returnto is specified, find this in the subsequent query string; note we cannot use a GET key because /path/foo.html would become /path/foo_html as PHP converts . to _
+			# By default, do not return anywhere
 			$returnto = false;
+			
+			# If redirectToAfterLogin is specified, use that
+			if ($this->settings['redirectToAfterLogin']) {
+				$returnto = $this->baseUrl . str_replace ('%username', $_SESSION[$this->settings['namespace']]['username'], $this->settings['redirectToAfterLogin']);
+			}
+			
+			# If a returnto is specified, find this in the subsequent query string; note we cannot use a GET key because /path/foo.html would become /path/foo_html as PHP converts . to _
 			if (substr_count ($_SERVER['QUERY_STRING'], "action={$_GET['action']}&/")) {
 				$returnto = '/' . str_replace ("action={$_GET['action']}&/", '', $_SERVER['QUERY_STRING']);
 			}
@@ -306,7 +391,7 @@ class userAccount
 			# If a validated returnto is specified, redirect to the user's original location if required
 			if ($returnto) {
 				if ($_SERVER['REQUEST_URI'] != $returnto) {
-					header ('Location: http://' . $_SERVER['SERVER_NAME'] . $returnto);
+					header ('Location: ' . $_SERVER['_SITE_URL'] . $returnto);
 					$this->html .= "\n<p>You are now logged in. <a href=\"" . htmlspecialchars ($returnto) . '">Please click here to continue.</a></p>';
 					return true;
 				}
@@ -341,6 +426,9 @@ class userAccount
 		}
 		if ($this->settings['privileges']) {
 			$_SESSION[$this->settings['namespace']]['privileges'] = ($accountDetails['privileges'] ? explode (',', $accountDetails['privileges']) : array ());
+		}
+		if ($this->settings['visibleNames']) {
+			$_SESSION[$this->settings['namespace']]['name'] = $accountDetails['name'];
 		}
 		$_SESSION[$this->settings['namespace']]['fingerprint'] = md5 ($_SERVER['HTTP_USER_AGENT']);		// md5 merely to condense the string; see: http://stackoverflow.com/a/1221933
 		$_SESSION[$this->settings['namespace']]['timestamp'] = time ();
@@ -380,6 +468,11 @@ class userAccount
 		# Initialise or end
 		if (!$this->init ()) {return false;}
 		
+		# Title if required
+		if ($this->settings['headingLevel']) {
+			$this->html .= "\n<h{$this->settings['headingLevel']}>Signed out</h{$this->settings['headingLevel']}>";
+		}
+		
 		# Cache whether the user presented session data
 		$userHadSessionData = (isSet ($_SESSION[$this->settings['namespace']]));
 		
@@ -391,7 +484,7 @@ class userAccount
 		if ($userHadSessionData) {
 			$this->html .= "\n<p>You have been successfully {$this->settings['loggedOutText']}.</p>\n<p>You can <a href=\"" . htmlspecialchars ($loginLocation) . '">' . $this->settings['loginText'] . ' again</a> if you wish.</p>';
 		} else {
-			header ('Location: http://' . $_SERVER['SERVER_NAME'] . $this->baseUrl . $loginLocation);
+			header ('Location: ' . $_SERVER['_SITE_URL'] . $this->baseUrl . $loginLocation);
 			$this->html .= "\n<p>You are not {$this->settings['loggedInText']}.</p>\n<p><a href=\"" . htmlspecialchars ($loginLocation) . '">Please click here to continue.</a></p>';
 		}
 	}
@@ -411,21 +504,39 @@ class userAccount
 	}
 	
 	
+	# Function to set a custom login message
+	public function setMessage ($string)
+	{
+		$this->loginMessage = $string;
+	}
+	
+	
 	# Login form
 	private function loginForm ()
 	{
 		# Start the HTML
 		$html  = '';
 		
+		# Title if required
+		if ($this->settings['headingLevel']) {
+			$this->html .= "\n<h{$this->settings['headingLevel']}>" . ucfirst ($this->settings['loginText']) . "</h{$this->settings['headingLevel']}>";
+		}
+		
+		# Show a custom message before the form if required
+		if ($this->loginMessage) {
+			$html .= "\n<div class=\"graybox\">\t\n<p>" . "<img src=\"{$this->baseUrl}/images/icons/information.png\" class=\"icon\" /> " . htmlspecialchars ($this->loginMessage) . "</p>\n</div>";
+		}
+		
 		# Create the form
 		require_once ('ultimateForm.php');
 		$form = new form (array (
 			'formCompleteText' => false,
-			'div' => 'graybox useraccount',
+			'div' => 'graybox useraccount signinform',
 			'displayRestrictions' => false,
 			'requiredFieldIndicator' => false,
 			'name' => false,
 			'autofocus' => true,
+			'jQuery' => $this->settings['jQuery'],
 		));
 		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br /><a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br /><br />');
 		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
@@ -434,11 +545,16 @@ class userAccount
 			'title'			=> 'E-mail address' . ($this->settings['usernames'] ? ' or username' : ''),
 			'required'		=> true,
 			'default'		=> (isSet ($_GET['email']) ? rawurldecode ($_GET['email']) : false),
+			'autofocus'		=> true,
+			'size'			=> 25,
+			'maxlength'		=> 100,
 		));
 		$form->password (array (
 			'name'			=> 'password',
 			'title'			=> 'Password',
 			'required'		=> true,
+			'size'			=> 25,
+			'maxlength'		=> 128,
 		));
 		if ($unfinalisedData = $form->getUnfinalisedData ()) {
 			if (isSet ($unfinalisedData['email']) && isSet ($unfinalisedData['password'])) {
@@ -478,9 +594,14 @@ class userAccount
 		# Start the HTML
 		$html  = '';
 		
+		# Title if required
+		if ($this->settings['headingLevel']) {
+			$this->html .= "\n<h{$this->settings['headingLevel']}>Create an account</h{$this->settings['headingLevel']}>";
+		}
+		
 		# If there is a signed-in user, prevent registration
 		if ($this->getUserId ()) {
-			$html  = "\n<p>You cannot reset the password while {$this->settings['loggedInText']}. Please <a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\">{$this->settings['logoutText']}</a> first.</p>";
+			$html .= "\n<p>You cannot reset the password while {$this->settings['loggedInText']}. Please <a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\">{$this->settings['logoutText']}</a> first.</p>";
 			$this->html .= $html;
 			return false;
 		}
@@ -491,16 +612,10 @@ class userAccount
 		# Show the form (which will write to $this->html)
 		if (!$result = $this->formUsernamePassword ()) {return false;}
 		
-		# Hash the password
-		$result['password'] = password_hash ($result['password'], PASSWORD_DEFAULT);
-		
-		# Add in a validation token
-		$result['validationToken'] = application::generatePassword ($this->settings['validationTokenLength']);
-		
-		# Insert the new user
-		if (!$this->databaseConnection->insert ($this->settings['database'], $this->settings['table'], $result)) {
-			$html .= "\n<p>There was a problem creating the account. Please try again later.</p>";
-			$this->html .= $html;
+		# Create the user
+#!# Undefined index: name in H:\Documents\Web\tallis.cyclestreets.net\libraries\userAccount.php on line 608
+		if (!$this->doUserCreate ($result['email'], $result['password'], ($this->settings['usernames'] ? $result['username'] : false), ($this->settings['visibleNames'] ? $result['name'] : false), $message)) {
+			$this->html .= "\n<p>{$message}</p>";
 			return;
 		}
 		
@@ -508,19 +623,59 @@ class userAccount
 		$html .= "\n<p><strong>Please now check your e-mail account (" . htmlspecialchars ($result['email']) . ') to validate the account.</strong></p>';
 		$html .= "\n<p>(If it has not appeared after a few minutes, please check your spam folder in case your e-mail provider has mis-filtered it.)</p>";
 		
-		# Assemble the message
-		$message  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
-		$message .= "\n\nTo validate the account, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$result['validationToken']}/";
-		$message .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
+		# Register the HTML
+		$this->html .= $html;
+	}
+	
+	
+	# Internal user creation
+	private function doUserCreate ($email, $password, $username = false, $name = false, &$message = '')
+	{
+		# Assemble the data to insert
+		$data = array ();
+		$data['email'] = $email;
+		
+		# Ensure the password is sufficiently complex, returning a message if not
+		if (!$this->passwordComplexityOk ($password, $message)) {return false;}
+		
+		# Hash the password
+		$data['password'] = password_hash ($password, PASSWORD_DEFAULT);
+		
+		# Add optional fields
+		if ($this->settings['usernames']) {
+			$data['username'] = $username;
+		}
+		if ($this->settings['visibleNames']) {
+			$data['name'] = $name;
+		}
+		
+		# Add in a validation token
+		$data['validationToken'] = application::generatePassword ($this->settings['validationTokenLength']);
+		
+		#!# Consider giving specific error message for username or e-mail already existing, rather than this returning the general failure message
+		
+		# Insert the new user
+		if (!$this->databaseConnection->insert ($this->settings['database'], $this->settings['table'], $data)) {
+			$message = 'There was a problem creating the account. Please try again later.';
+			return false;
+		}
+		
+		# Assemble the e-mail message
+		$emailMessage  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
+		$emailMessage .= "\n\nTo validate the account, use this link:";
+		$emailMessage .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$data['validationToken']}/";
+		$emailMessage .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
 		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
 		$additionalParameters = "-f {$this->settings['administratorEmail']} -r {$this->settings['administratorEmail']}";
-		application::utf8Mail ($result['email'], "Registration on {$_SERVER['SERVER_NAME']} - confirmation required", wordwrap ($message), $mailheaders, $additionalParameters);
+		application::utf8Mail ($data['email'], "Registration on {$_SERVER['SERVER_NAME']} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
 		
-		# Register the HTML
-		$this->html .= $html;
+		# Set a status message
+		$message = 'Please check your e-mail to confirm the account creation.';
+		
+		# Signal success
+		return true;
 	}
 	
 	
@@ -581,6 +736,11 @@ class userAccount
 		# Initialise or end
 		if (!$this->init ()) {return false;}
 		
+		# Title if required
+		if ($this->settings['headingLevel']) {
+			$this->html .= "\n<h{$this->settings['headingLevel']}>Reset password</h{$this->settings['headingLevel']}>";
+		}
+		
 		# Determine if the user is already logged-in
 		$loggedInUsername = $this->getUserId ();
 		
@@ -606,6 +766,7 @@ class userAccount
 			'requiredFieldIndicator' => false,
 			'name' => false,
 			'autofocus' => true,
+			'jQuery' => $this->settings['jQuery'],
 		));
 		$form->heading ('p', "You can use this form to reset your password.</p>\n<p>Enter your e-mail address" . ($this->settings['usernames'] ? ' or username' : '') . ' below. If it has been registered, instructions on resetting your password will be sent by e-mail.');
 		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
@@ -725,12 +886,13 @@ class userAccount
 		require_once ('ultimateForm.php');
 		$form = new form (array (
 			'formCompleteText' => false,
-			'div' => 'graybox useraccount',
+			'div' => 'graybox useraccount ultimateform',
 			'displayRestrictions' => false,
 			'requiredFieldIndicator' => false,
 			'name' => false,
 			'display' => 'paragraphs',
 			'autofocus' => true,
+			'jQuery' => $this->settings['jQuery'],
 		));
 		if (!$tokenConfirmation) {
 			$form->heading ('p', '<strong>Fill in these details to create an account.</strong> ' . ($this->settings['usernames'] ? 'Choose a username, specify' : 'Specify') . ' your e-mail address, and create a password.');
@@ -756,6 +918,7 @@ class userAccount
 			'default'		=> $prefillEmail,
 			'editable'		=> (!$prefillEmail),
 			'description'	=> ($tokenConfirmation ? '' : 'We will send a confirmation message to this address.'),
+			'autofocus'		=> true,
 		));
 		$form->heading ('p', 'Now ' . ($tokenConfirmation ? 'enter a new password' : 'choose a password') . ", and repeat it to confirm.");
 		$form->password (array (
@@ -823,7 +986,7 @@ class userAccount
 		
 		# Must have both letters and numbers
 		if ($this->settings['passwordRequiresLettersAndNumbers']) {
-			if (!preg_match ('/[a-zA-Z]/', $password) && !preg_match ('/[0-9]/', $password)) {
+			if (!preg_match ('/[a-zA-Z]/', $password) || !preg_match ('/[0-9]/', $password)) {
 				$message = 'The password must include at least one letter and number.';
 				return false;
 			}
@@ -834,8 +997,19 @@ class userAccount
 	}
 	
 	
+	# Code-level public access to do a simple validation
+	public function doValidation ($identifier, $password, &$message = '', $apiMode = false)
+	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
+		# Return the result
+		return $this->getValidatedUser ($identifier, $password, $message, $apiMode);
+	}
+	
+	
 	# Check credentials, by supplying the e-mail/username so that the row containing the password can be found, and then matching the password
-	private function getValidatedUser ($identifier, $password, &$message = '')
+	private function getValidatedUser ($identifier, $password, &$message = '', $apiMode = false)
 	{
 		# Determine if the identifier is an e-mail or username
 		$identifierIsEmail = true;
@@ -851,31 +1025,34 @@ class userAccount
 		if ($identifierIsEmail) {	// If a username has been entered, do not expose the associated e-mail address for the account
 			$resetPasswordLink .= '?email=' . htmlspecialchars (rawurlencode ($identifier));
 		}
-		$failureMessage = "The {$identifierDescription}/password pair you provided did not match any registered account. <a href=\"" . $resetPasswordLink . '">Reset your password</a> if you have forgotten it.';
+		$failureMessage = "No validated account matching that {$identifierDescription} and password was found." . ($apiMode ? '' : " <a href=\"" . $resetPasswordLink . '">Reset your password</a> if you have forgotten it.');
 		
 		# Get the data row for this identifier
 		$identifierField = ($identifierIsEmail ? 'email' : 'username');
 		if (!$user = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], array ($identifierField => $identifier))) {
 			$message = $failureMessage;
+			sleep (1);		// Slow down dictionary attack attempts
 			return false;
 		}
 		
 		# Verify the password
 		if (!$this->passwordVerify ($password, $user)) {
 			$message = $failureMessage;
+			sleep (1);		// Slow down dictionary attack attempts
 			return false;
 		}
 		
 		# If the credentials are correct, but the account not validated, disallow login, as the user has not yet confirmed they have access to the e-mail they originally specified
 		if (!$user['validatedAt']) {
-			$message = "The account for the {$identifierDescription} you specified has not yet been validated. Please check your e-mail account for the validation link you were sent, or <a href=\"" . $resetPasswordLink . '">request it again</a> if you cannot find it.';
+			$message = "The account for the {$identifierDescription} you specified has not yet been validated. Please check your e-mail account for the validation link you were sent" . ($apiMode ? '' : ", or <a href=\"" . $resetPasswordLink . '">request it again</a> if you cannot find it') . '.';
 			return false;
 		}
 		
-		# Filter to id and e-mail fields - all others should be considered internal
+		# Filter to id and e-mail fields, plus any specified in the settings - all others should be considered internal
 		$fields = array ('id', 'email');
 		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
 		if ($this->settings['privileges']) {$fields[] = 'privileges';}	// Add privileges if enabled
+		if ($this->settings['visibleNames']) {$fields[] = 'name';}	// Add the visible name if enabled
 		$userFiltered = array ();
 		foreach ($fields as $field) {
 			$userFiltered[$field] = $user[$field];
@@ -893,14 +1070,14 @@ class userAccount
 		switch (true) {
 			
 			# Legacy manually-salted crypt(); currently only 13-character CRYPT_STD_DES hashes supported
-			case ((strlen ($user['password']) == 13) && (substr ($user['password'], 0, 2) == substr ($this->settings['salt'], 0, 2)) && (!preg_match ('/^\$\w{2}\$/', $user['password']))):
-				$suppliedPasswordHashed = crypt ($suppliedPassword, $this->settings['salt']);
+			case ((strlen ($user['password']) == 13) && (substr ($user['password'], 0, 2) == substr ($this->settings['saltLegacyHashes'], 0, 2)) && (!preg_match ('/^\$\w{2}\$/', $user['password']))):
+				$suppliedPasswordHashed = crypt ($suppliedPassword, $this->settings['saltLegacyHashes']);
 				$correct = ($suppliedPasswordHashed == $user['password']);
 				break;
 				
 			# Legacy hash(sha512) hash; see http://stackoverflow.com/questions/20841766/
 			case (!preg_match ('/^\$\w{2}\$/', $user['password'])):
-				$suppliedPasswordHashed = hash ('sha512', $this->settings['salt'] . $user['email'] . $suppliedPassword);	// http://phpsec.org/articles/2005/password-hashing.html ; note that supplying the e-mail as well makes the salt more complex and therefore means that two users with the same password will have different hashes
+				$suppliedPasswordHashed = hash ('sha512', $this->settings['saltLegacyHashes'] . $user['email'] . $suppliedPassword);	// http://phpsec.org/articles/2005/password-hashing.html ; note that supplying the e-mail as well makes the salt more complex and therefore means that two users with the same password will have different hashes
 				$correct = ($suppliedPasswordHashed == $user['password']);
 				break;
 				
@@ -912,7 +1089,7 @@ class userAccount
 		# Return false if authentication failed
 		if (!$correct) {return false;}
 		
-		# Rehash if required
+		# Rehash (upgrade to better hash) if required
 		if (password_needs_rehash ($user['password'], PASSWORD_DEFAULT)) {
 			$newHash = password_hash ($suppliedPassword, PASSWORD_DEFAULT);
 			$update = array ('password' => $newHash);
@@ -932,6 +1109,11 @@ class userAccount
 		
 		# Start the HTML
 		$html  = '';
+		
+		# Title if required
+		if ($this->settings['headingLevel']) {
+			$this->html .= "\n<h{$this->settings['headingLevel']}>" . ucfirst ($this->settings['loginText']) . "</h{$this->settings['headingLevel']}>";
+		}
 		
 		# Ensure the user is logged in
 		if (!$userId = $this->getUserId ()) {
@@ -955,6 +1137,7 @@ class userAccount
 			'div' => 'accountdetails ultimateform horizontalonly',
 			'unsavedDataProtection' => true,
 			'reappear' => true,
+			'jQuery' => $this->settings['jQuery'],
 		));
 		$form->email (array (
 			'name'			=> 'email',
@@ -1060,6 +1243,120 @@ class userAccount
 		
 		# Register the HTML
 		$this->html .= $html;
+	}
+	
+	
+	# Page to delete account
+	public function deleteaccount ()
+	{
+		$html  = "\n<p>The account deletion facility will be available shortly - apologies that this is not yet ready.</p>";
+		$html .= "\n<p>In the meanwhile, please contact us and we'll manually delete the account for you without delay.</p>";
+		
+		# Register the HTML
+		$this->html .= $html;
+	}
+	
+	
+	# API call to user authentication
+	public function authenticateApiCall ($requestedFields = array ())
+	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
+		# Get the username and password; POST is used because otherwise the username and password will appear in the server logs
+#!# Check e-mail vs username
+		$identifier = (isSet ($_POST['username']) ? $_POST['username'] : false);
+		$password = (isSet ($_POST['password']) ? $_POST['password'] : false);
+		if (!$identifier || !$password) {
+			return array ('error' => 'A username/e-mail and password must both be supplied.');
+		}
+		
+		# Do authentication, or end on failure
+		if (!$data = $this->getValidatedUser ($identifier, $password, $message, true)) {
+			return array ('error' => $message);
+		}
+		
+		# Limit to fields requested by a calling implementation if required
+		if ($requestedFields) {
+			
+			# Check the requested fields are valid
+			$fields = array ('id', 'email');
+			if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
+			if ($this->settings['privileges']) {$fields[] = 'privileges';}	// Add privileges if enabled
+			if ($this->settings['visibleNames']) {$fields[] = 'name';}	// Add the visible name if enabled
+			if ($unavailableFields = array_diff ($requestedFields, $fields)) {
+				return array ('error' => 'Not all the requested fields (' . implode (', ', $unavailableFields) . ') are available.');
+			}
+			
+			# Filter to requested fields
+			$data = application::arrayFields ($data, $requestedFields);
+		}
+		
+		# Return the data
+		return $data;
+	}
+	
+	
+	# API call to user creation
+	public function createApiCall ()
+	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
+		# Get the e-mail and password; POST is used because otherwise the username and password will appear in the server logs
+		$email = (isSet ($_POST['email']) ? $_POST['email'] : false);
+		$password = (isSet ($_POST['password']) ? $_POST['password'] : false);
+		if (!$email || !$password) {
+			return array ('error' => 'An e-mail and password must both be supplied.');
+		}
+		
+		# Username field, if enabled in the settings
+		if ($this->settings['usernames']) {
+			$username = (isSet ($_POST['username']) ? $_POST['username'] : false);
+			if (!$username) {
+				return array ('error' => 'A username must be supplied.');
+			}
+		}
+		
+		# Optional visible name field
+		if ($this->settings['visibleNames']) {
+			$name = (isSet ($_POST['name']) ? $_POST['name'] : false);	// Visible name
+		}
+		
+		# Create the user with the supplied values
+		if (!$result = $this->doUserCreate ($email, $password, ($this->settings['usernames'] ? $username : false), ($this->settings['visibleNames'] ? $name : false), $message)) {
+			return array ('error' => $message);
+		}
+		
+		# Assemble the result, returning a success message by way of confirmation
+		$data = array ('successmessage' => $message);
+		
+		# Return the data
+		return $data;
+	}
+	
+	
+	# Function to get the last day's registrations
+	public function mailRecentRegistrations ()
+	{
+		# Define the query
+		$query = "SELECT id,username,name,email FROM {$this->settings['table']} WHERE validatedAt > DATE_SUB(NOW(), INTERVAL 1 DAY);";
+		
+		# Get the data; end if none
+		if (!$data = $this->databaseConnection->getData ($query)) {return;}
+		
+		# Arrange each line as text
+		$lines = array ();
+		foreach ($data as $registration) {
+			$lines[] = implode ("\t", $registration);
+		}
+		
+		# Compile the text
+		$message = "Here are all the newly-created accounts in the last 24 hours:\n\n" . implode ("\n", $lines);
+		
+		# E-mail the text
+		$subjectLine = 'New ' . $this->settings['applicationName'] . ' accounts validated';
+		application::utf8Mail ($this->settings['administratorEmail'], $subjectLine, $message, 'From: ' . $this->settings['administratorEmail']);
 	}
 }
 
