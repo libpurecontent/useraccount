@@ -3,7 +3,7 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.0
+# Version 1.5.1
 
 
 # Library class to provide user login functionality
@@ -106,9 +106,6 @@ class userAccount
 		
 		# Start the session handling
 		if (!session_id ()) {session_start ();}
-		
-		# Regenerate the session ID
-		session_regenerate_id ($deleteOldSession = true);
 		
 		// Take no action
 		
@@ -418,6 +415,9 @@ class userAccount
 		$updateData = array ('lastLoggedInAt' => 'NOW()');
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $accountDetails['email']));
 		
+		# Regenerate the session ID
+		session_regenerate_id ($deleteOldSession = true);
+		
 		# Write the values into the session
 		$_SESSION[$this->settings['namespace']]['userId'] = $accountDetails['id'];
 		$_SESSION[$this->settings['namespace']]['email'] = $accountDetails['email'];
@@ -493,6 +493,10 @@ class userAccount
 	# Helper function to destroy a session properly
 	private function killSession ()
 	{
+		# Regenerate the session ID
+		session_regenerate_id ($deleteOldSession = true);
+		
+		# Remove the session
 		session_unset ();
 		session_destroy ();
 		unset ($_SESSION[$this->settings['namespace']]);
