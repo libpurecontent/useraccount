@@ -3,7 +3,7 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.1
+# Version 1.5.2
 
 
 # Library class to provide user login functionality
@@ -271,7 +271,7 @@ class userAccount
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
 		
-		# Return the array of privileges (or empty array if none)
+		# Return the array of privileges (or empty array if for some reason it doesn't exist)
 		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['privileges'] : array ());
 	}
 	
@@ -425,7 +425,7 @@ class userAccount
 			$_SESSION[$this->settings['namespace']]['username'] = $accountDetails['username'];
 		}
 		if ($this->settings['privileges']) {
-			$_SESSION[$this->settings['namespace']]['privileges'] = ($accountDetails['privileges'] ? explode (',', $accountDetails['privileges']) : array ());
+			$_SESSION[$this->settings['namespace']]['privileges'] = $accountDetails['privileges'];	// Already an array
 		}
 		if ($this->settings['visibleNames']) {
 			$_SESSION[$this->settings['namespace']]['name'] = $accountDetails['name'];
@@ -1062,6 +1062,11 @@ class userAccount
 			$userFiltered[$field] = $user[$field];
 		}
 		
+		# Set the privileges to be an array (even if empty)
+		if (array_key_exists ('privileges', $userFiltered)) {
+			$userFiltered['privileges'] = ($userFiltered['privileges'] ? explode (',', $userFiltered['privileges']) : array ());
+		}
+		
 		# Return the user
 		return $userFiltered;
 	}
@@ -1267,9 +1272,27 @@ class userAccount
 		# Initialise or end
 		if (!$this->init ()) {return false;}
 		
-		# Get the username and password; POST is used because otherwise the username and password will appear in the server logs
-#!# Check e-mail vs username
-		$identifier = (isSet ($_POST['username']) ? $_POST['username'] : false);
+		# Note: this API uses POST, to avoid the identifier and password appearing in the server logs
+		
+		# Ensure that only one of the (equivalent) identifier fields have been posted; the implementation may use any one of the three, which are named for convenience
+		$equivalentFields = array ('username', 'email', 'identifier');
+		$identifierFieldsPosted = array ();
+		foreach ($equivalentFields as $field) {
+			if (isSet ($_POST[$field])) {
+				$identifierFieldsPosted[] = $_POST[$field];
+			}
+		}
+		
+		# Check that one and only one has been posted
+		if (!$identifierFieldsPosted) {
+			return array ('error' => 'No username/email has been posted.');
+		}
+		if (count ($identifierFieldsPosted) > 1) {
+			return array ('error' => 'More than one identifier field (username/email/identifier) has been posted, whereas only one should be.');
+		}
+		
+		# Get the identifier and password
+		$identifier = $identifierFieldsPosted[0];	// The confirmed one field, though it could be an empty string
 		$password = (isSet ($_POST['password']) ? $_POST['password'] : false);
 		if (!$identifier || !$password) {
 			return array ('error' => 'A username/e-mail and password must both be supplied.');
