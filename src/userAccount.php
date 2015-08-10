@@ -3,7 +3,7 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.2
+# Version 1.5.3
 
 
 # Library class to provide user login functionality
@@ -258,7 +258,7 @@ class userAccount
 		$this->doSessionChecks ();
 		
 		# Return the status
-		return (isSet ($_SESSION[$this->settings['namespace']]) ? in_array ($privilege, $_SESSION[$this->settings['namespace']]['privileges'], true) : false);
+		return (isSet ($_SESSION[$this->settings['namespace']]) && isSet ($_SESSION[$this->settings['namespace']]['privileges']) ? in_array ($privilege, $_SESSION[$this->settings['namespace']]['privileges'], true) : false);
 	}
 	
 	
@@ -272,7 +272,7 @@ class userAccount
 		$this->doSessionChecks ();
 		
 		# Return the array of privileges (or empty array if for some reason it doesn't exist)
-		return (isSet ($_SESSION[$this->settings['namespace']]) ? $_SESSION[$this->settings['namespace']]['privileges'] : array ());
+		return (isSet ($_SESSION[$this->settings['namespace']]) && isSet ($_SESSION[$this->settings['namespace']]['privileges']) ? $_SESSION[$this->settings['namespace']]['privileges'] : array ());
 	}
 	
 	
