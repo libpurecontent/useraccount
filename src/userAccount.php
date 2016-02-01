@@ -3,7 +3,7 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.3
+# Version 1.5.4
 
 
 # Library class to provide user login functionality
@@ -1039,6 +1039,13 @@ class userAccount
 			return false;
 		}
 		
+		# Check whether the account has been deleted
+		if ($this->accountDeleted ($user)) {
+			$message = "No valid account matching that {$identifierDescription} and password was found.";
+			sleep (1);		// Slow down dictionary attack attempts
+			return false;
+		}
+		
 		# Verify the password
 		if (!$this->passwordVerify ($password, $user)) {
 			$message = $failureMessage;
@@ -1069,6 +1076,17 @@ class userAccount
 		
 		# Return the user
 		return $userFiltered;
+	}
+	
+	
+	/**
+	 * Checks if the account has been deleted
+	 * @param array $user
+	 * @return bool
+	 */
+	private function accountDeleted ($user)
+	{
+		return (isSet ($user['deleted']) && $user['deleted'] == 'yes');
 	}
 	
 	
