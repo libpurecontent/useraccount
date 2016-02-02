@@ -3,10 +3,10 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.4
+# Version 1.5.5
 
 
-# Library class to provide user login functionality
+# Library class to proavide user login functionality
 class userAccount
 {
 	# Specify available arguments as defaults or as NULL (to represent a required argument)
@@ -40,6 +40,8 @@ class userAccount
 		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. NO capital letters allowed.',
 		'privileges'						=> false,	// Whether there is a privileges field
 		'visibleNames'						=> false,	// Whether there is a visible name field
+//		'cookieName'						=> 'login',
+		'cookieName'						=> 'session',
 	);
 	
 	# Class properties
@@ -101,7 +103,7 @@ class userAccount
 		$this->databaseConnection = $databaseConnection;
 		
 		# Lock down PHP session management
-		ini_set ('session.name', 'session');
+		ini_set ('session.name', $this->settings['cookieName']);
 		ini_set ('session.use_only_cookies', 1);
 		
 		# Start the session handling
