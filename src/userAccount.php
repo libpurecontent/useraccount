@@ -3,16 +3,17 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.5
+# Version 1.5.6
 
 
-# Library class to proavide user login functionality
+# Library class to provide user login functionality
 class userAccount
 {
 	# Specify available arguments as defaults or as NULL (to represent a required argument)
 	private $defaults = array (
 		'namespace'							=> 'UserAccount',
 		'baseUrl'							=> '',
+		'siteUrl'							=> false,			// Used in emitted e-mails only; if false, $_SERVER['_SITE_URL'] will be set as the default, e.g. https://www.example.com
 		'loginUrl'							=> '/login/',					// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
 		'logoutUrl'							=> '/login/logout/',			// after baseUrl
 		'redirectToAfterLogin'				=> false,						// Redirection if on the login page while in logged-in state; baseUrl will be added in front; %username can be used as a token to represent the username
@@ -40,8 +41,7 @@ class userAccount
 		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. NO capital letters allowed.',
 		'privileges'						=> false,	// Whether there is a privileges field
 		'visibleNames'						=> false,	// Whether there is a visible name field
-//		'cookieName'						=> 'login',
-		'cookieName'						=> 'session',
+		'cookieName'						=> 'login',	// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
 	);
 	
 	# Class properties
@@ -92,15 +92,18 @@ class userAccount
 		# Merge in the arguments; note that $errors returns the errors by reference and not as a result from the method
 		if (!$this->settings = application::assignArguments ($errors, $settings, $this->defaults, __CLASS__, NULL, $handleErrors = true)) {return false;}
 		
-		# Assign the baseUrl
-		$this->baseUrl = $this->settings['baseUrl'];
-		
 		# Obtain the database connection handle
 		if (!$databaseConnection || !$databaseConnection->connection) {
 			$this->setupError = "\n<p class=\"warning\">No valid database connection was supplied. The website administrator needs to fix this problem.</p>";
 			return false;
 		}
 		$this->databaseConnection = $databaseConnection;
+		
+		# Assign the baseUrl
+		$this->baseUrl = $this->settings['baseUrl'];
+		
+		# Assign the site URL for use in emitted e-mails, e.g. https://www.example.com
+		$this->siteUrl = ($this->settings['siteUrl'] ? $this->settings['siteUrl'] : $_SERVER['_SITE_URL']);
 		
 		# Lock down PHP session management
 		ini_set ('session.name', $this->settings['cookieName']);
@@ -619,7 +622,7 @@ class userAccount
 		if (!$result = $this->formUsernamePassword ()) {return false;}
 		
 		# Create the user
-#!# Undefined index: name in H:\Documents\Web\tallis.cyclestreets.net\libraries\userAccount.php on line 608
+#!# Undefined index: name in userAccount.php on line 608
 		if (!$this->doUserCreate ($result['email'], $result['password'], ($this->settings['usernames'] ? $result['username'] : false), ($this->settings['visibleNames'] ? $result['name'] : false), $message)) {
 			$this->html .= "\n<p>{$message}</p>";
 			return;
@@ -669,7 +672,7 @@ class userAccount
 		# Assemble the e-mail message
 		$emailMessage  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
 		$emailMessage .= "\n\nTo validate the account, use this link:";
-		$emailMessage .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageRegister']}{$data['validationToken']}/";
+		$emailMessage .= "\n\n{$this->siteUrl}{$this->baseUrl}{$this->settings['pageRegister']}{$data['validationToken']}/";
 		$emailMessage .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -813,7 +816,7 @@ class userAccount
 		# Assemble the message
 		$message  = "\nA request to change your password on {$_SERVER['SERVER_NAME']} has been made.";
 		$message .= "\n\nTo create a new password, use this link:";
-		$message .= "\n\n{$_SERVER['_SITE_URL']}{$this->baseUrl}{$this->settings['pageResetpassword']}{$validationToken}/";
+		$message .= "\n\n{$this->siteUrl}{$this->baseUrl}{$this->settings['pageResetpassword']}{$validationToken}/";
 		$message .= "\n\n\nIf you did not request a new password, do not worry - your password has not been changed. You can just ignore this e-mail.";
 		
 		# Send the e-mail
@@ -1344,7 +1347,7 @@ class userAccount
 	}
 	
 	
-	# API call to user creation
+	# API call to user creation; note that setting $this->siteUrl will likely to be needed if the API is on a different domain to the website, so that the right e-mail links are sent
 	public function createApiCall ()
 	{
 		# Initialise or end
