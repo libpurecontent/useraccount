@@ -3,7 +3,7 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.5.6
+# Version 1.6.0
 
 
 # Library class to provide user login functionality
@@ -13,6 +13,7 @@ class userAccount
 	private $defaults = array (
 		'namespace'							=> 'UserAccount',
 		'baseUrl'							=> '',
+		'imagesLocation'					=> '/images/icons/',
 		'siteUrl'							=> false,			// Used in emitted e-mails only; if false, $_SERVER['_SITE_URL'] will be set as the default, e.g. https://www.example.com
 		'loginUrl'							=> '/login/',					// after baseUrl. E.g. if the baseUrl is /app then the loginUrl should be set as e.g. /login/ , which will result in links to /app/login/
 		'logoutUrl'							=> '/login/logout/',			// after baseUrl
@@ -38,7 +39,8 @@ class userAccount
 		'passwordRequiresLettersAndNumbers'	=> true,
 		'usernames'							=> false,	// Whether to use usernames (necessary only for social applications, where friendly profile URLs are needed)
 		'usernameRegexp'					=> '^([a-z0-9]{5,})$',
-		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. NO capital letters allowed.',
+		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. No capital letters allowed.',
+		'emailAddressesDisallowRegexp'		=> false,
 		'privileges'						=> false,	// Whether there is a privileges field
 		'visibleNames'						=> false,	// Whether there is a visible name field
 		'cookieName'						=> 'login',	// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
@@ -136,7 +138,7 @@ class userAccount
 			}
 		}
 		
-		# End if a setup error occured
+		# End if a setup error occurred
 		if ($this->setupError) {
 			$this->html = $this->setupError;
 			return false;
@@ -402,7 +404,7 @@ class userAccount
 			# Otherwise, still on the page, confirm login
 			if ($showStatus) {
 				$this->html .= "\n" . '<div class="graybox">';
-				$this->html .= "\n\t" . '<p><img src="/images/icons/tick.png" /> You are currently ' . $this->settings['loggedInText'] . ' as <strong>' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</strong>.</p>';
+				$this->html .= "\n\t" . '<p><img src="' . $this->settings['imagesLocation'] . 'tick.png" /> You are currently ' . $this->settings['loggedInText'] . ' as <strong>' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</strong>.</p>';
 				$this->html .= "\n" . '</div>';
 				$this->html .= "\n" . '<p>Please <a href="' . $this->baseUrl . $this->settings['logoutUrl'] . '">' . $this->settings['logoutText'] . '</a> when you have finished.</p>';
 			}
@@ -533,7 +535,7 @@ class userAccount
 		
 		# Show a custom message before the form if required
 		if ($this->loginMessage) {
-			$html .= "\n<div class=\"graybox\">\t\n<p>" . "<img src=\"{$this->baseUrl}/images/icons/information.png\" class=\"icon\" /> " . htmlspecialchars ($this->loginMessage) . "</p>\n</div>";
+			$html .= "\n<div class=\"graybox\">\t\n<p>" . "<img src=\"{$this->settings['imagesLocation']}information.png\" class=\"icon\" /> " . htmlspecialchars ($this->loginMessage) . "</p>\n</div>";
 		}
 		
 		# Create the form
@@ -584,7 +586,7 @@ class userAccount
 		}
 		
 		# Confirm login
-		$html  = "\n" . '<p><img src="/images/icons/tick.png" /> <strong>You have successfully ' . $this->settings['loggedInText'] . '.</strong></p>';
+		$html  = "\n" . '<p><img src="' . $this->settings['imagesLocation'] . 'tick.png" /> <strong>You have successfully ' . $this->settings['loggedInText'] . '.</strong></p>';
 		
 		# Register the HTML
 		$this->html .= $html;
@@ -610,7 +612,7 @@ class userAccount
 		
 		# If there is a signed-in user, prevent registration
 		if ($this->getUserId ()) {
-			$html .= "\n<p>You cannot reset the password while {$this->settings['loggedInText']}. Please <a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\">{$this->settings['logoutText']}</a> first.</p>";
+			$html .= "\n<p>You cannot register an account while already {$this->settings['loggedInText']} as another user. Please <a href=\"{$this->baseUrl}{$this->settings['logoutUrl']}\">{$this->settings['logoutText']}</a> first.</p>";
 			$this->html .= $html;
 			return false;
 		}
@@ -665,20 +667,36 @@ class userAccount
 		
 		# Insert the new user
 		if (!$this->databaseConnection->insert ($this->settings['database'], $this->settings['table'], $data)) {
-			$message = 'There was a problem creating the account. Please try again later.';
+			$error = $this->databaseConnection->error ();
+			if (substr_count ($error['queryEmulated'], 'Duplicate entry')) {
+				$message = 'That username/e-mail address already exists.';
+			} else {
+				$message = 'There was a problem creating the account. Please try again later.';
+			}
 			return false;
 		}
 		
+		# Determine the subject title name
+		$subjectTitle = " on {$_SERVER['SERVER_NAME']}";
+		
+		# Determine the base URL for the validation link
+		$baseLink = $this->siteUrl . $this->baseUrl . $this->settings['pageRegister'];
+		
+		# If the account creation is namespaced, strip the namespace from the e-mail being sent
+		if (preg_match ('/^(.+)\\\\(.+)$/', $data['email'], $matches)) {	// Literal backslash in preg_match is \\\\ ; see: https://www.developwebsites.net/match-backslash-preg_match-php/
+			$data['email'] = $matches[2];
+		}
+		
 		# Assemble the e-mail message
-		$emailMessage  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
-		$emailMessage .= "\n\nTo validate the account, use this link:";
-		$emailMessage .= "\n\n{$this->siteUrl}{$this->baseUrl}{$this->settings['pageRegister']}{$data['validationToken']}/";
+		$emailMessage  = "\nA request to create a new account {$subjectTitle} has been made.";
+		$emailMessage .= "\n\nTo validate the account, please use this link:";
+		$emailMessage .= "\n\n{$baseLink}{$data['validationToken']}/";
 		$emailMessage .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
 		
 		# Send the e-mail
 		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
 		$additionalParameters = "-f {$this->settings['administratorEmail']} -r {$this->settings['administratorEmail']}";
-		application::utf8Mail ($data['email'], "Registration on {$_SERVER['SERVER_NAME']} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
+		application::utf8Mail ($data['email'], "Registration {$subjectTitle} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
 		
 		# Set a status message
 		$message = 'Please check your e-mail to confirm the account creation.';
@@ -717,7 +735,7 @@ class userAccount
 		
 		# Log the user in
 		$this->doLogin ($accountDetails);
-		$html .= "\n" . '<p><img src="/images/icons/user.png" /> You are now logged in with the new password.</p>';
+		$html .= "\n" . '<p><img src="' . $this->settings['imagesLocation'] . 'user.png" /> You are now logged in with the new password.</p>';
 		
 		# Register the HTML
 		$this->html .= $html;
@@ -732,7 +750,7 @@ class userAccount
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('id' => $userId));
 		
 		# Assemble the HTML
-		$html = "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your account has now been validated - many thanks for registering.</strong></p>';
+		$html = "\n" . '<p><strong><img src="' . $this->settings['imagesLocation'] . 'tick.png" /> Your account has now been validated - many thanks for registering.</strong></p>';
 		
 		# Return the HTML
 		return $html;
@@ -866,11 +884,11 @@ class userAccount
 		# Update the password in the database
 		$updateData = array ('password' => $passwordHashed, 'validationToken' => NULL);
 		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $result['email']));
-		$html .= "\n" . '<p><strong><img src="/images/icons/tick.png" /> Your password has been successfully set.</strong></p>';
+		$html .= "\n" . '<p><strong><img src="' . $this->settings['imagesLocation'] . 'tick.png" /> Your password has been successfully set.</strong></p>';
 		
 		# Log the user in
 		$this->doLogin ($accountDetails);
-		$html .= "\n" . '<p><img src="/images/icons/user.png" /> You are now logged in with the new password.</p>';
+		$html .= "\n" . '<p><img src="' . $this->settings['imagesLocation'] . 'user.png" /> You are now logged in with the new password.</p>';
 		
 		# Register the HTML
 		$this->html .= $html;
@@ -928,6 +946,7 @@ class userAccount
 			'editable'		=> (!$prefillEmail),
 			'description'	=> ($tokenConfirmation ? '' : 'We will send a confirmation message to this address.'),
 			'autofocus'		=> true,
+			'disallow'		=> $this->settings['emailAddressesDisallowRegexp'],
 		));
 		$form->heading ('p', 'Now ' . ($tokenConfirmation ? 'enter a new password' : 'choose a password') . ", and repeat it to confirm.");
 		$form->password (array (
@@ -1255,7 +1274,7 @@ class userAccount
 		
 		# Perform the update
 		if (!$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updates, $conditions = array ('id' => $userId))) {
-			$html = "\n<p>The details were not changed, as a problem occured. Please contact the Webmaster.</p>";
+			$html = "\n<p>The details were not changed, as a problem occurred. Please contact the Webmaster.</p>";
 			$this->html = $html;
 			return;
 		}
@@ -1269,7 +1288,7 @@ class userAccount
 		
 		# Confirm success, prepending this to the HTML
 		$confirmationHtml .= "\n" . '<div class="graybox">';
-		$confirmationHtml .= "\n\t" . '<p><img src="/images/icons/tick.png" /> <strong>Your profile details have been updated.</strong></p>';
+		$confirmationHtml .= "\n\t" . '<p><img src="' . $this->settings['imagesLocation'] . 'tick.png" /> <strong>Your profile details have been updated.</strong></p>';
 		$confirmationHtml .= "\n" . '</div>';
 		$html = $confirmationHtml . $html;
 		
