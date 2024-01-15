@@ -1,0 +1,16 @@
+{
+    "name": "libpurecontent/useraccount",
+    "description": "PHP library userAccount within the pureContent library suite",
+    "type": "library",
+    "license": "GPL-3.0-only",
+    "minimum-stability": "stable",
+    "authors": [
+        {
+            "name": "mvl22"
+        }
+    ],
+    "require": {},
+    "autoload": {
+        "psr-0": {"userAccount": "src/"}
+    }
+}
