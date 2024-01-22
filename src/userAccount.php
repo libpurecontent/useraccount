@@ -125,11 +125,6 @@ class userAccount
 		# Load required libraries
 		require_once ('database.php');
 		
-		# Load the password_compat library if password_* functions do not exist; obtain this file from: https://github.com/ircmaxell/password_compat/
-		if (!defined ('PASSWORD_DEFAULT')) {
-			require_once ('password.php');
-		}
-		
 		# Ensure the table exists
 		if ($this->databaseConnection) {
 			$tables = $this->databaseConnection->getTables ($this->settings['database']);
