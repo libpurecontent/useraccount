@@ -3,8 +3,6 @@
 #!# Needs account deletion facility
 #!# Needs e-mail address change facility
 
-# Version 1.6.0
-
 
 # Library class to provide user login functionality
 class userAccount
@@ -88,9 +86,6 @@ class userAccount
 	# Constructor
 	function __construct ($settings = array (), $databaseConnection = NULL)
 	{
-		# Load required libraries
-		require_once ('application.php');
-		
 		# Merge in the arguments; note that $errors returns the errors by reference and not as a result from the method
 		if (!$this->settings = application::assignArguments ($errors, $settings, $this->defaults, __CLASS__, NULL, $handleErrors = true)) {return false;}
 		
@@ -122,9 +117,6 @@ class userAccount
 	# Function to load resources required when a database access is involved; this is not done in the constructor to avoid unecessary overhead when using the get* accessor methods (which generally only require a session)
 	private function init ()
 	{
-		# Load required libraries
-		require_once ('database.php');
-		
 		# Ensure the table exists
 		if ($this->databaseConnection) {
 			$tables = $this->databaseConnection->getTables ($this->settings['database']);
@@ -534,7 +526,6 @@ class userAccount
 		}
 		
 		# Create the form
-		require_once ('ultimateForm.php');
 		$form = new form (array (
 			'formCompleteText' => false,
 			'div' => 'graybox useraccount signinform',
@@ -780,7 +771,6 @@ class userAccount
 		$html  = '';
 		
 		# Create the form
-		require_once ('ultimateForm.php');
 		$form = new form (array (
 			'formCompleteText' => false,
 			'div' => 'graybox useraccount',
@@ -905,7 +895,6 @@ class userAccount
 		}
 		
 		# Create the form
-		require_once ('ultimateForm.php');
 		$form = new form (array (
 			'formCompleteText' => false,
 			'div' => 'graybox useraccount ultimateform',
@@ -1176,7 +1165,6 @@ class userAccount
 		$introductionHtml = "\n<p>If you wish to change any of your account details, enter the changes below.</p>";
 		
 		# Show the form
-		require_once ('ultimateForm.php');
 		$form = new form (array (
 			'displayRestrictions' 	=> false,
 			'formCompleteText' 	=> false,
