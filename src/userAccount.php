@@ -46,6 +46,10 @@ class userAccount
 	
 	# Class properties
 	private $html  = '';
+	private $settings = array ();
+	private $databaseConnection;
+	private $baseUrl;
+	private $siteUrl;
 	private $loginMessage = false;
 	private $setupError = NULL;
 	
