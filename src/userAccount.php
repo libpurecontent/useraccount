@@ -1372,6 +1372,9 @@ class userAccount
 			if (!$username) {
 				return array ('error' => 'A username must be supplied.');
 			}
+			if ($username && !preg_match ('/' . $this->settings['usernameRegexp'] . '/', $username)) {
+				return array ('error' => $this->settings['usernameRegexpDescription']);
+			}
 		}
 		
 		# Optional visible name field
