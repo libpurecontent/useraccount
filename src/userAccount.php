@@ -529,6 +529,12 @@ class userAccount
 			$html .= "\n<div class=\"graybox\">\t\n<p>" . "<img src=\"{$this->settings['imagesLocation']}information.png\" class=\"icon\" /> " . htmlspecialchars ($this->loginMessage) . "</p>\n</div>";
 		}
 		
+		# Assemble the preamble and links
+		$introductionHtml  = '<p><strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p>';
+		$introductionHtml .= '<p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br />';
+		$introductionHtml .= '<a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.</p>';
+		$introductionHtml .= '<br />';
+		
 		# Create the form
 		$form = new form (array (
 			'formCompleteText' => false,
@@ -539,7 +545,7 @@ class userAccount
 			'autofocus' => true,
 			'jQuery' => $this->settings['jQuery'],
 		));
-		$form->heading ('p', '<strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p><p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br /><a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br /><br />');
+		$form->heading ('', $introductionHtml);
 		$widgetType = ($this->settings['usernames'] ? 'input' : 'email');	// Prefer HTML5 e-mail type if usernames are not in use
 		$form->{$widgetType} (array (
 			'name'			=> 'email',		// Retained this name so that browsers auto-fill
