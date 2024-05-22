@@ -1400,40 +1400,15 @@ class userAccount
 	
 	
 	# API call to user authentication
+	# Note: this API uses POST, to avoid the identifier and password appearing in the server logs
 	public function authenticateApiCall ($requestedFields = array ())
 	{
 		# Initialise or end
 		if (!$this->init ()) {return false;}
 		
-		# Note: this API uses POST, to avoid the identifier and password appearing in the server logs
-		
-		# Ensure that only one of the (equivalent) identifier fields have been posted; the implementation may use any one of the three, which are named for convenience
-		$equivalentFields = array ('username', 'email', 'identifier');
-		$identifierFieldsPosted = array ();
-		foreach ($equivalentFields as $field) {
-			if (isSet ($_POST[$field])) {
-				$identifierFieldsPosted[] = $_POST[$field];
-			}
-		}
-		
-		# Check that one and only one has been posted
-		if (!$identifierFieldsPosted) {
-			return array ('error' => 'No username/email has been posted.');
-		}
-		if (count ($identifierFieldsPosted) > 1) {
-			return array ('error' => 'More than one identifier field (username/email/identifier) has been posted, whereas only one should be.');
-		}
-		
-		# Get the identifier and password
-		$identifier = $identifierFieldsPosted[0];	// The confirmed one field, though it could be an empty string
-		$password = (isSet ($_POST['password']) ? $_POST['password'] : false);
-		if (!$identifier || !$password) {
-			return array ('error' => 'A username/e-mail and password must both be supplied.');
-		}
-		
-		# Do authentication, or end on failure
-		if (!$data = $this->getValidatedUser ($identifier, $password, $message, true)) {
-			return array ('error' => $message);
+		# Do validation
+		if (!$data = $this->doApiValidation ($error)) {
+			return array ('error' => $error);
 		}
 		
 		# Limit to fields requested by a calling implementation if required
@@ -1453,6 +1428,47 @@ class userAccount
 		}
 		
 		# Return the data
+		return $data;
+	}
+	
+	
+	# Internal validation routine for the API
+	private function doApiValidation (&$error = '')
+	{
+		# Ensure that only one of the (equivalent) identifier fields have been posted; the implementation may use any one of the three, which are named for convenience
+		$equivalentFields = array ('username', 'email', 'identifier');
+		$identifierFieldsPosted = array ();
+		foreach ($equivalentFields as $field) {
+			if (isSet ($_POST[$field])) {
+				$identifierFieldsPosted[] = $_POST[$field];
+			}
+		}
+		
+		# Check that one and only one has been posted
+		if (!$identifierFieldsPosted) {
+			$error = 'No username/email has been posted.';
+			return false;
+		}
+		if (count ($identifierFieldsPosted) > 1) {
+			$error = 'More than one identifier field (username/email/identifier) has been posted, whereas only one should be.';
+			return false;
+		}
+		
+		# Get the identifier and password
+		$identifier = $identifierFieldsPosted[0];	// The confirmed single field, though it could be an empty string
+		$password = (isSet ($_POST['password']) ? $_POST['password'] : false);
+		if (!$identifier || !$password) {
+			$error = 'A username/e-mail and password must both be supplied.';
+			return false;
+		}
+		
+		# Do authentication, or end on failure
+		if (!$data = $this->getValidatedUser ($identifier, $password, $message, true)) {
+			$error = $message;
+			return false;
+		}
+		
+		# Return success
 		return $data;
 	}
 	
