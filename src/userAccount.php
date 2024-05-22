@@ -1359,6 +1359,34 @@ class userAccount
 	}
 	
 	
+	# API call to delete an account
+	public function deleteApiCall ()
+	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
+		# Do validation
+		if (!$user = $this->doApiValidation ($error)) {
+			return array ('error' => $error);
+		}
+		
+		# Delete the user
+		if (!$this->doUserDelete ($user['id'], $message)) {
+			return array ('error' => $message);
+			return false;
+		}
+		
+		# Assemble data to be returned
+		$data = array (
+			'deleted' => true,
+			'email' => $user['email'],
+		);
+		
+		# Return success
+		return $data;
+	}
+	
+	
 	# Internal user deletion; performs fake-delete by erasing the user details (including password hash) but leaving the ID/row present
 	private function doUserDelete ($userId, &$message = '')
 	{
