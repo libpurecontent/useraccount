@@ -26,6 +26,7 @@ class userAccount
 		'pageRegister'						=> '/login/register/',			// after baseUrl
 		'pageResetpassword'					=> '/login/resetpassword/',		// after baseUrl
 		'pageAccountdetails'				=> '/login/accountdetails/',    // after baseUrl
+		'pageDeleteaccount'					=> '/login/deleteaccount/',    // after baseUrl
 		'applicationName'					=> NULL,
 		'administratorEmail'				=> NULL,
 		'validationTokenLength'				=> 24,
@@ -532,7 +533,8 @@ class userAccount
 		# Assemble the preamble and links
 		$introductionHtml  = '<p><strong>Please enter your ' . ($this->settings['brandname'] ? $this->settings['brandname'] . ' ' : '') . 'e-mail and password to continue.</strong> Or:</p>';
 		$introductionHtml .= '<p><a href="' . $this->baseUrl . $this->settings['pageRegister'] . '">Create a new account</a> if you don\'t have one yet.<br />';
-		$introductionHtml .= '<a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.</p>';
+		$introductionHtml .= '<a href="' . $this->baseUrl . $this->settings['pageResetpassword'] . (isSet ($_GET['email']) ? '?email=' . htmlspecialchars (rawurldecode ($_GET['email'])) : false) . '">Forgotten your password?</a> - link to reset it.<br />';
+		$introductionHtml .= '<a href="' . $this->baseUrl . $this->settings['pageDeleteaccount'] . '">Delete your account&hellip;</a> if you wish.</p>';
 		$introductionHtml .= '<br />';
 		
 		# Create the form
@@ -1099,6 +1101,7 @@ class userAccount
 	
 	/**
 	 * Checks if the account has been deleted
+	 * #!# This may be legacy and not working
 	 * @param array $user
 	 * @return bool
 	 */
@@ -1171,8 +1174,9 @@ class userAccount
 		$userEmail = $this->getUserEmail ();
 		$userUsername = $this->getUserUsername ();
 		
-		# Define an introduction to the form
+		# Define an introduction and footer to the form
 		$introductionHtml = "\n<p>If you wish to change any of your account details, enter the changes below.</p>";
+		$footerHtml = '<hr /><p><a href="' . $this->baseUrl . $this->settings['pageDeleteaccount'] . '">Delete your account&hellip;</a> if you wish.</p>';
 		
 		# Show the form
 		$form = new form (array (
@@ -1243,7 +1247,7 @@ class userAccount
 		
 		# Process the form
 		if (!$result = $form->process ($html)) {
-			$html = $introductionHtml . $html;
+			$html = $introductionHtml . $html . $footerHtml;
 			$this->html .= $html;
 			return false;
 		}
@@ -1293,11 +1297,105 @@ class userAccount
 	# Page to delete account
 	public function deleteaccount ()
 	{
-		$html  = "\n<p>The account deletion facility will be available shortly - apologies that this is not yet ready.</p>";
-		$html .= "\n<p>In the meanwhile, please contact us and we'll manually delete the account for you without delay.</p>";
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
+		# Start the HTML
+		$html  = '';
+		
+		# Title if required
+		if ($this->settings['headingLevel']) {
+			$this->html .= "\n<h{$this->settings['headingLevel']}>Delete your account</h{$this->settings['headingLevel']}>";
+		}
+		
+		# Ensure the user is logged in
+		if (!$userId = $this->getUserId ()) {
+			$html  = "\n" . '<p>You must <a href="' . $this->baseUrl . $this->settings['loginUrl'] . '?' . $this->baseUrl . $this->settings['pageDeleteaccount'] . '">' . $this->settings['loginText'] . '</a> first, if you wish to delete your account.</p>';
+			$this->html .= $html;
+			return false;
+		}
+		
+		# Start the HTML
+		$html  = '';
+		
+		# Create the form
+		$form = new form (array (
+			'formCompleteText' => false,
+			'nullText' => false,
+			'div' => 'graybox',
+			'displayRestrictions' => false,
+			'displayTitles' => false,
+			'requiredFieldIndicator' => false,
+		));
+		$form->heading ('p', 'Do you wish to delete your account?');
+		$form->checkboxes (array (
+			'name'		=> 'confirmation',
+			'values'	=> array ('confirm' => 'Yes, delete my account'),
+			'required'	=> true,	// Ensures that a submission must be ticked for the form to be successful
+		));
+		
+		# Process the form
+		if (!$form->process ($html)) {
+			$html .= '<p>Or <a href="' . $this->baseUrl . $this->settings['pageAccountdetails'] . '">cancel</a>.</p>';
+			$this->html .= $html;
+			return false;
+		}
+		
+		# Delete the user
+		if (!$this->doUserDelete ($userId, $message)) {
+			$html = "\n<p>{$message}</p>";
+			$this->html = $html;
+			return false;
+		}
+		
+		# Show the message
+		$html = "\n<p>{$message}</p>";
+		
+		# Explicitly destroy the session
+		$this->killSession ();
 		
 		# Register the HTML
 		$this->html .= $html;
+	}
+	
+	
+	# Internal user deletion; performs fake-delete by erasing the user details (including password hash) but leaving the ID/row present
+	private function doUserDelete ($userId, &$message = '')
+	{
+		# Assemble the data to update
+		$wipedString = 'deleted_' . $userId . '_' . date ('Y-m-d_H:i:s');
+		$data = array (
+			'email'				=> $wipedString,
+			'password'			=> $wipedString,	// This makes the login unusable, as it will no longer be a valid hash
+			'validationToken'	=> $wipedString,
+		);
+		if ($this->settings['usernames']) {
+			$data['username'] = $wipedString;
+		}
+		if ($this->settings['visibleNames']) {
+			$data['name'] = $wipedString;
+		}
+		
+		# Delete the user
+		if (!$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $data, array ('id' => $userId))) {
+			$message = 'There was a problem deleting the account. Please try again later.';
+			return false;
+		}
+		
+		# Assemble the e-mail message
+		$emailMessage  = "\nYour account on {$_SERVER['SERVER_NAME']} has been deleted.";
+		$emailMessage .= "\n\nIf you did not request deletion of your account, please contact us.";
+		
+		# Send the e-mail
+		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
+		$additionalParameters = "-f {$this->settings['administratorEmail']} -r {$this->settings['administratorEmail']}";
+		application::utf8Mail ($data['email'], "Account deleted on {$_SERVER['SERVER_NAME']}", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
+		
+		# Set a status message
+		$message = '<img src="' . $this->settings['imagesLocation'] . 'tick.png" /> Your account has been deleted.';
+		
+		# Signal success
+		return true;
 	}
 	
 	
