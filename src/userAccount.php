@@ -68,18 +68,18 @@ class userAccount
 		CREATE TABLE IF NOT EXISTS `{$this->settings['table']}` (
 		  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Automatic key',
 		  {$username}
-		  `email` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Your e-mail address',
-		  `password` varchar(255) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Password',
+		  `email` varchar(255) NOT NULL COMMENT 'Your e-mail address',
+		  `password` varchar(255) NOT NULL COMMENT 'Password',
 		  {$visibleName}
 		  {$privileges}
-		  `validationToken` varchar(255) COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Token for validation or password reset',
+		  `validationToken` varchar(255) DEFAULT NULL COMMENT 'Token for validation or password reset',
 		  `lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
 		  `validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
 		  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
 		  PRIMARY KEY (`id`),
 		  {$usernameIndex}
 		  UNIQUE KEY `email` (`email`)
-		) ENGINE=MyISAM  DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Users';
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Users';
 		";
 		
 		# Return the SQL
