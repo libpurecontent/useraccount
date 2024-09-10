@@ -674,9 +674,6 @@ class userAccount
 			return false;
 		}
 		
-		# Determine the subject title name
-		$subjectTitle = " on {$_SERVER['SERVER_NAME']}";
-		
 		# Determine the base URL for the validation link
 		$baseLink = $this->siteUrl . $this->baseUrl . $this->settings['pageRegister'];
 		
@@ -686,7 +683,7 @@ class userAccount
 		}
 		
 		# Assemble the e-mail message
-		$emailMessage  = "\nA request to create a new account {$subjectTitle} has been made.";
+		$emailMessage  = "\nA request to create a new account on {$_SERVER['SERVER_NAME']} has been made.";
 		$emailMessage .= "\n\nTo validate the account, please use this link:";
 		$emailMessage .= "\n\n{$baseLink}{$data['validationToken']}/";
 		$emailMessage .= "\n\n\nIf you did not request to create this account, do not worry - it will not yet have been fully created. You can just ignore this e-mail.";
@@ -694,7 +691,7 @@ class userAccount
 		# Send the e-mail
 		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
 		$additionalParameters = "-f {$this->settings['administratorEmail']} -r {$this->settings['administratorEmail']}";
-		application::utf8Mail ($data['email'], "Registration {$subjectTitle} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
+		application::utf8Mail ($data['email'], "Registration on {$_SERVER['SERVER_NAME']} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
 		
 		# Set a status message
 		$message = 'Please check your e-mail to confirm the account creation.';
