@@ -622,7 +622,6 @@ class userAccount
 		if (!$result = $this->formUsernamePassword ()) {return false;}
 		
 		# Create the user
-#!# Undefined index: name in userAccount.php on line 608
 		if (!$this->doUserCreate ($result['email'], $result['password'], ($this->settings['usernames'] ? $result['username'] : false), ($this->settings['visibleNames'] ? $result['name'] : false), $message)) {
 			$this->html .= "\n<p>{$message}</p>";
 			return;
@@ -930,6 +929,16 @@ class userAccount
 				));
 			}
 		}
+		if ($this->settings['visibleNames']) {
+			$form->input (array (
+				'name'			=> 'name',
+				'title'			=> 'Visible name',
+				'required'		=> false,
+				'maxlength'		=> 255,
+				'size'			=> 50,
+				'description'	=> 'If not specified, your username will be used.',
+			));
+		}
 		$form->email (array (
 			'name'			=> 'email',
 			'title'			=> 'E-mail address',
@@ -1170,6 +1179,9 @@ class userAccount
 		# Get the initial details of the current user
 		$userEmail = $this->getUserEmail ();
 		$userUsername = $this->getUserUsername ();
+		if ($this->settings['usernames']) {
+			$userName = $this->getUserName ();
+		}
 		
 		# Define an introduction and footer to the form
 		$introductionHtml = "\n<p>If you wish to change any of your account details, enter the changes below.</p>";
@@ -1202,6 +1214,17 @@ class userAccount
 				'size'			=> 20,
 				'regexp'		=> $this->settings['usernameRegexp'],
 				'description'	=> $this->settings['usernameRegexpDescription'],
+			));
+		}
+		if ($this->settings['visibleNames']) {
+			$form->input (array (
+				'name'			=> 'name',
+				'title'			=> 'Visible name',
+				'default'		=> $userName,
+				'required'		=> false,
+				'maxlength'		=> 255,
+				'size'			=> 50,
+				'description'	=> 'If not specified, your username will be used.',
 			));
 		}
 		$form->password (array (
@@ -1256,6 +1279,9 @@ class userAccount
 				$updates['username'] = $result['username'];
 			}
 		}
+		if ($this->settings['visibleNames']) {
+			$updates['name'] = $result['name'];
+		}
 		if (strlen ($result['newpassword'])) {
 			$updates['password'] = password_hash ($result['newpassword'], PASSWORD_DEFAULT);;
 		}
@@ -1277,6 +1303,11 @@ class userAccount
 		if ($this->settings['usernames']) {
 			if (isSet ($updates['username'])) {
 				$_SESSION[$this->settings['namespace']]['username'] = $result['username'];
+			}
+		}
+		if ($this->settings['visibleNames']) {
+			if (isSet ($updates['name'])) {
+				$_SESSION[$this->settings['namespace']]['name'] = $result['name'];
 			}
 		}
 		
