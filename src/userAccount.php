@@ -1281,7 +1281,7 @@ class userAccount
 		}
 		
 		# Confirm success, prepending this to the HTML
-		$confirmationHtml .= "\n" . '<div class="graybox">';
+		$confirmationHtml  = "\n" . '<div class="graybox">';
 		$confirmationHtml .= "\n\t" . '<p><img src="' . $this->settings['imagesLocation'] . 'tick.png" /> <strong>Your profile details have been updated.</strong></p>';
 		$confirmationHtml .= "\n" . '</div>';
 		$html = $confirmationHtml . $html;
