@@ -107,14 +107,18 @@ class userAccount
 		# Assign the site URL for use in emitted e-mails, e.g. https://www.example.com
 		$this->siteUrl = ($this->settings['siteUrl'] ? $this->settings['siteUrl'] : $_SERVER['_SITE_URL']);
 		
-		# Lock down PHP session management
-		ini_set ('session.name', $this->settings['cookieName']);
-		ini_set ('session.use_only_cookies', 1);
+		# Start the session if not already started
+		if (!session_id ()) {
+			
+			# Lock down PHP session management
+			ini_set ('session.name', $this->settings['cookieName']);
+			ini_set ('session.use_only_cookies', 1);
+			
+			# Stat the session
+			session_start ();
+		}
 		
-		# Start the session handling
-		if (!session_id ()) {session_start ();}
-		
-		// Take no action
+		// Take no other action
 		
 	}
 	
