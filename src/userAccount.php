@@ -43,6 +43,7 @@ class userAccount
 		'privileges'						=> false,	// Whether there is a privileges field
 		'visibleNames'						=> false,	// Whether there is a visible name field
 		'cookieName'						=> 'login',	// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
+		'loginMessageHtml'					=> false,	// Extra message for login page, e.g. to clarify what type of account needed, etc.
 	);
 	
 	# Class properties
@@ -541,6 +542,11 @@ class userAccount
 		$introductionHtml .= '<a href="' . $this->baseUrl . $this->settings['pageDeleteaccount'] . '">Delete your account&hellip;</a> if you wish.</p>';
 		$introductionHtml .= '<br />';
 		
+		# Extra login message if required
+		if ($this->settings['loginMessageHtml']) {
+			$introductionHtml .= "\n" . $this->settings['loginMessageHtml'];
+		}
+		
 		# Create the form
 		$form = new form (array (
 			'formCompleteText' => false,
@@ -919,6 +925,9 @@ class userAccount
 		));
 		if (!$tokenConfirmation) {
 			$form->heading ('p', '<strong>Fill in these details to create an account.</strong> ' . ($this->settings['usernames'] ? 'Choose a username, specify' : 'Specify') . ' your e-mail address, and create a password.');
+		}
+		if ($this->settings['loginMessageHtml']) {
+			$form->heading ('', $this->settings['loginMessageHtml']);
 		}
 		if ($this->settings['usernames']) {
 			if (!$tokenConfirmation) {
