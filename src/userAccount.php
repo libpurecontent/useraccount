@@ -44,6 +44,7 @@ class userAccount
 		'visibleNames'						=> false,	// Whether there is a visible name field
 		'cookieName'						=> 'login',	// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
 		'loginMessageHtml'					=> false,	// Extra message for login page, e.g. to clarify what type of account needed, etc.
+		'privacyPolicy'						=> false,	// Privacy policy URL for checkbox/link during signup
 	);
 	
 	# Class properties
@@ -971,6 +972,18 @@ class userAccount
 			'confirmation'	=> true,
 			'description'	=> "Must be <strong>at least {$this->settings['passwordMinimumLength']} characters long</strong>" . ($this->settings['passwordRequiresLettersAndNumbers'] ? ', and including at least one letter and number' : '') . '.',
 		));
+		if ($this->settings['privacyPolicy']) {
+			if (!$tokenConfirmation) {	// I.e. registration page
+				$form->checkboxes (array (
+					'name'		=> 'privacy',
+					'title'		=> 'Privacy policy',
+					'values'	=> array ('confirm' => 'I agree to the <a href="' . htmlspecialchars ($this->settings['privacyPolicy']) . '" target="_blank" title="[Link opens in a new window]">Privacy policy</a>.'),
+					'entities'	=> false,
+					'required'	=> true,	// Ensures that a submission must be ticked for the form to be successful
+					'discard'	=> true,
+				));
+			}
+		}
 		if ($unfinalisedData = $form->getUnfinalisedData ()) {
 			if (isSet ($unfinalisedData['email']) && isSet ($unfinalisedData['password'])) {
 				if (strlen ($unfinalisedData['email']) && strlen ($unfinalisedData['password'])) {
