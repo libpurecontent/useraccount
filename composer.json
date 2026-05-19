@@ -12,7 +12,7 @@
     "require": {
         "libpurecontent/application": "^1.9",
         "libpurecontent/database": "^4.2",
-        "libpurecontent/ultimateform": "^1.29"
+        "libpurecontent/ultimateform": "^1.31"
     },
     "autoload": {
         "psr-0": {"userAccount": "src/"}
