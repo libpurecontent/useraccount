@@ -1444,6 +1444,9 @@ class userAccount
 	# Internal user deletion; performs fake-delete by erasing the user details (including password hash) but leaving the ID/row present
 	private function doUserDelete ($userId, &$message = '')
 	{
+		# Cache the user's current e-mail, for use in the deletion confirmation e-mail
+		$userEmail = $this->getUserEmail ();
+		
 		# Assemble the data to update
 		$wipedString = 'deleted_' . $userId . '_' . date ('Y-m-d_H:i:s');
 		$data = array (
@@ -1471,7 +1474,7 @@ class userAccount
 		# Send the e-mail
 		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
 		$additionalParameters = "-f {$this->settings['administratorEmail']} -r {$this->settings['administratorEmail']}";
-		application::utf8Mail ($data['email'], "Account deleted on {$_SERVER['SERVER_NAME']}", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
+		application::utf8Mail ($userEmail, "Account deleted on {$_SERVER['SERVER_NAME']}", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
 		
 		# Set a status message
 		$message = '<img src="' . $this->settings['imagesLocation'] . 'tick.png" /> Your account has been deleted.';
