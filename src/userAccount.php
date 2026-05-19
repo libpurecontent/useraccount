@@ -1391,16 +1391,35 @@ class userAccount
 			'formCompleteText' => false,
 			'nullText' => false,
 			'div' => 'graybox',
+			'display' => 'paragraphs',
 			'displayRestrictions' => false,
-			'displayTitles' => false,
 			'requiredFieldIndicator' => false,
 		));
 		$form->heading ('p', 'Do you wish to delete your account?');
 		$form->checkboxes (array (
 			'name'		=> 'confirmation',
+			'title'		=> 'Confirm account deletion',
 			'values'	=> array ('confirm' => 'Yes, delete my account'),
 			'required'	=> true,	// Ensures that a submission must be ticked for the form to be successful
 		));
+		
+		# Authenticate the account again as a confirmatory check (the user is already logged in)
+		$form->password (array (
+			'name'			=> 'currentpassword',
+			'title'			=> 'Confirm your password',
+			'required'		=> true,
+			'size'			=> 20,
+			'maxlength'		=> 128,
+			'discard'		=> true,
+		));
+		if ($unfinalisedData = $form->getUnfinalisedData ()) {
+			if (strlen ($unfinalisedData['currentpassword'])) {
+				$userEmail = $this->getUserEmail ();
+				if (!$this->getValidatedUser ($userEmail, $unfinalisedData['currentpassword'])) {
+					$form->registerProblem ('failure', 'The password you provided was not correct. Please correct it and try again.', 'password');
+				}
+			}
+		}
 		
 		# Process the form
 		if (!$form->process ($html)) {
