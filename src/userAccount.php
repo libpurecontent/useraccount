@@ -40,12 +40,13 @@ class userAccount
 		'usernameRegexp'					=> '^([a-z0-9]{5,})$',
 		'usernameRegexpDescription'			=> 'Usernames must be all lower-case letters/numbers, at least 5 characters long. No capital letters allowed.',
 		'emailAddressesDisallowRegexp'		=> false,
-		'privileges'						=> false,	// Whether there is a privileges field
-		'visibleNames'						=> false,	// Whether there is a visible name field
-		'cookieName'						=> 'login',	// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
-		'cookieHttpOnly'					=> true,	// Marks the cookie as accessible only through the HTTP protocol, so not available to Javascript
-		'loginMessageHtml'					=> false,	// Extra message for login page, e.g. to clarify what type of account needed, etc.
-		'privacyPolicy'						=> false,	// Privacy policy URL for checkbox/link during signup
+		'privileges'						=> false,		// Whether there is a privileges field
+		'visibleNames'						=> false,		// Whether there is a visible name field
+		'cookieName'						=> 'login',		// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
+		'cookieHttpOnly'					=> true,		// Marks the cookie as accessible only through the HTTP protocol, so not available to Javascript
+		'cookieSameSite'					=> 'Strict',	// Strict/Lax/None; see: https://web.dev/articles/samesite-cookies-explained
+		'loginMessageHtml'					=> false,		// Extra message for login page, e.g. to clarify what type of account needed, etc.
+		'privacyPolicy'						=> false,		// Privacy policy URL for checkbox/link during signup
 	);
 	
 	# Class properties
@@ -113,10 +114,11 @@ class userAccount
 		# Start the session if not already started
 		if (!session_id ()) {
 			
-			# Lock down PHP session management
+			# Lock down PHP session management; see: https://www.php.net/session.configuration
 			ini_set ('session.name', $this->settings['cookieName']);
 			ini_set ('session.use_only_cookies', 1);
 			ini_set ('session.cookie_httponly', $this->settings['cookieHttpOnly']);
+			ini_set ('session.cookie_samesite', $this->settings['cookieSameSite']);
 			
 			# Stat the session
 			session_start ();
@@ -516,6 +518,7 @@ class userAccount
 				'domain' => $params['domain'],
 				'secure' => $params['secure'],
 				'httponly' => $params['httponly'],
+				'samesite' => $params['samesite'],
 			);
 			setcookie (session_name (), '', $options);
 		}
