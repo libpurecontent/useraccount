@@ -44,6 +44,7 @@ class userAccount
 		'visibleNames'						=> false,		// Whether there is a visible name field
 		'cookieName'						=> 'login',		// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
 		'cookieHttpOnly'					=> true,		// Marks the cookie as accessible only through the HTTP protocol, so not available to Javascript
+		'cookieSecure'						=> true,		// Indicates that the cookie should only be transmitted over a secure HTTPS connection from the client
 		'cookieSameSite'					=> 'Strict',	// Strict/Lax/None; see: https://web.dev/articles/samesite-cookies-explained
 		'loginMessageHtml'					=> false,		// Extra message for login page, e.g. to clarify what type of account needed, etc.
 		'privacyPolicy'						=> false,		// Privacy policy URL for checkbox/link during signup
@@ -118,6 +119,7 @@ class userAccount
 			ini_set ('session.name', $this->settings['cookieName']);
 			ini_set ('session.use_only_cookies', 1);
 			ini_set ('session.cookie_httponly', $this->settings['cookieHttpOnly']);
+			ini_set ('session.cookie_secure', $this->settings['cookieSecure']);
 			ini_set ('session.cookie_samesite', $this->settings['cookieSameSite']);
 			
 			# Stat the session
