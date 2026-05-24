@@ -56,6 +56,7 @@ class userAccount
 	private $databaseConnection;
 	private $baseUrl;
 	private $siteUrl;
+	private $siteDomain;
 	private $loginMessage = false;
 	private $setupError = NULL;
 	
@@ -111,6 +112,7 @@ class userAccount
 		
 		# Assign the site URL for use in emitted e-mails, e.g. https://www.example.com
 		$this->siteUrl = ($this->settings['siteUrl'] ? $this->settings['siteUrl'] : $_SERVER['_SITE_URL']);
+		$this->siteDomain = preg_replace ('|^https?://|', '', $this->siteUrl);
 		
 		# Start the session if not already started
 		if (!session_id ()) {
@@ -715,7 +717,7 @@ class userAccount
 		# Send the e-mail
 		$mailheaders = 'From: ' . ((PHP_OS == 'WINNT') ? $this->settings['administratorEmail'] : $this->settings['applicationName'] . ' <' . $this->settings['administratorEmail'] . '>');
 		$additionalParameters = "-f {$this->settings['administratorEmail']} -r {$this->settings['administratorEmail']}";
-		application::utf8Mail ($data['email'], "Registration on {$_SERVER['SERVER_NAME']} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
+		application::utf8Mail ($data['email'], "Registration on {$this->siteDomain} - confirmation required", wordwrap ($emailMessage), $mailheaders, $additionalParameters);
 		
 		# Set a status message
 		$message = 'Please check your e-mail to confirm the account creation.';
