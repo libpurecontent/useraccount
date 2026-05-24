@@ -744,7 +744,9 @@ class userAccount
 		if ($this->settings['usernames']) {$fields[] = 'username';}	// Add username if enabled
 		if ($this->settings['privileges']) {$fields[] = 'privileges';}	// Add privileges if enabled
 		if (!$accountDetails = $this->databaseConnection->selectOne ($this->settings['database'], $this->settings['table'], $match, $fields)) {
-			$html .= "<p>The details you supplied were not correct. Please check the link given in the e-mail and try again.</p>";
+			$html .= "\n<p>The validation link you used has either already been confirmed (you may have double-clicked it) or was incorrect.</p>";
+			$html .= "\n<p>Please check the link given in the e-mail and try again, or try to " . $this->settings['loginText'] . ':</p>';
+			$html .= "\n<p><br /><strong><a href=\"" . $this->baseUrl . $this->settings['loginUrl'] . '" class="actions">' . '<img src="' . $this->settings['imagesLocation'] . 'bullet_go.png" class="icon" />' . ' ' . ucfirst ($this->settings['loginText']) . '</a></strong></p>';
 			$this->html .= $html;
 			return;	// End here; take no action
 		}
