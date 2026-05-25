@@ -34,7 +34,7 @@ class userAccount
 		'loggedInText'						=> 'logged in',
 		'logoutText'						=> 'log out',
 		'loggedOutText'						=> 'logged out',
-		'passwordMinimumLength'				=> 6,
+		'passwordMinimumLength'				=> 12,		// Ensures compliance with Cyber Essentials Basic (UK)
 		'passwordRequiresLettersAndNumbers'	=> true,
 		'usernames'							=> false,	// Whether to use usernames (necessary only for social applications, where friendly profile URLs are needed)
 		'usernameRegexp'					=> '^([a-z0-9]{5,})$',
