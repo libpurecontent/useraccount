@@ -1602,8 +1602,8 @@ class userAccount
 		if (!$this->init ()) {return false;}
 		
 		# Get the e-mail and password; POST is used because otherwise the username and password will appear in the server logs
-		$email = (isSet ($_POST['email']) ? $_POST['email'] : false);
-		$password = (isSet ($_POST['password']) ? $_POST['password'] : false);
+		$email = (isSet ($_POST['email']) && strlen ($_POST['email']) ? $_POST['email'] : false);
+		$password = (isSet ($_POST['password']) && strlen ($_POST['password']) ? $_POST['password'] : false);
 		if (!$email || !$password) {
 			return array ('error' => 'An e-mail and password must both be supplied.');
 		}
@@ -1617,6 +1617,11 @@ class userAccount
 			if ($username && !preg_match ('/' . $this->settings['usernameRegexp'] . '/', $username)) {
 				return array ('error' => $this->settings['usernameRegexpDescription']);
 			}
+		}
+
+		# Validate e-mail
+		if (!application::validEmail ($password)) {
+			return array ('error' => 'The e-mail you specified does not appear to be a valid e-mail.');
 		}
 		
 		# Optional visible name field
