@@ -72,10 +72,10 @@ class userAccount
 			case 'mysql':
 				
 				# Determine optional parts
-				$username = ($this->settings['usernames'] ? "`username` varchar(30) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Username'," : '');
+				$username = ($this->settings['usernames'] ? "`username` varchar(30) NOT NULL COMMENT 'Username'," : '');
 				$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
-				$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Privileges'," : '');
-				$visibleName = ($this->settings['visibleNames'] ? "`name` varchar(255) COLLATE utf8_unicode_ci NULL COMMENT 'Name'," : '');
+				$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') DEFAULT NULL COMMENT 'Privileges'," : '');
+				$visibleName = ($this->settings['visibleNames'] ? "`name` varchar(255) NULL COMMENT 'Name'," : '');
 				
 				# Assemble the SQL
 				$sql = "
