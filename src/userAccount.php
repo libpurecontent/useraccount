@@ -961,16 +961,6 @@ class userAccount
 				));
 			}
 		}
-		if ($this->settings['visibleNames']) {
-			$form->input (array (
-				'name'			=> 'name',
-				'title'			=> 'Visible name',
-				'required'		=> false,
-				'maxlength'		=> 255,
-				'size'			=> 50,
-				'description'	=> 'If not specified, your username will be used.',
-			));
-		}
 		$form->email (array (
 			'name'			=> 'email',
 			'title'			=> 'E-mail address',
@@ -990,6 +980,16 @@ class userAccount
 			'confirmation'	=> true,
 			'description'	=> "Must be <strong>at least {$this->settings['passwordMinimumLength']} characters long</strong>" . ($this->settings['passwordRequiresLettersAndNumbers'] ? ', and including at least one letter and number' : '') . '.',
 		));
+		if ($this->settings['visibleNames']) {
+			$form->input (array (
+				'name'			=> 'name',
+				'title'			=> 'Visible name',
+				'required'		=> false,
+				'maxlength'		=> 255,
+				'size'			=> 50,
+				'description'	=> 'If not specified, your username will be used.',
+			));
+		}
 		if ($this->settings['privacyPolicy']) {
 			if (!$tokenConfirmation) {	// I.e. registration page
 				$form->checkboxes (array (
