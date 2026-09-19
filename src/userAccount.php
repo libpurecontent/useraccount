@@ -64,30 +64,82 @@ class userAccount
 	# Database structure definition
 	public function databaseStructure ()
 	{
-		# Determine optional parts
-		$username = ($this->settings['usernames'] ? "`username` varchar(30) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Username'," : '');
-		$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
-		$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Privileges'," : '');
-		$visibleName = ($this->settings['visibleNames'] ? "`name` varchar(255) COLLATE utf8_unicode_ci NULL COMMENT 'Name'," : '');
-		
-		# Assemble the SQL
-		$sql = "
-		CREATE TABLE IF NOT EXISTS `{$this->settings['table']}` (
-		  `id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Automatic key',
-		  {$username}
-		  `email` varchar(255) NOT NULL COMMENT 'Your e-mail address',
-		  `password` varchar(255) NOT NULL COMMENT 'Password',
-		  {$visibleName}
-		  {$privileges}
-		  `validationToken` varchar(255) DEFAULT NULL COMMENT 'Token for validation or password reset',
-		  `lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
-		  `validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
-		  `createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
-		  PRIMARY KEY (`id`),
-		  {$usernameIndex}
-		  UNIQUE KEY `email` (`email`)
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Users';
-		";
+		# Define structure by vendor
+		$vendor = $this->databaseConnection->getVendor ();
+		switch ($vendor) {
+			
+			# MySQL
+			case 'mysql':
+				
+				# Determine optional parts
+				$username = ($this->settings['usernames'] ? "`username` varchar(30) COLLATE utf8_unicode_ci NOT NULL COMMENT 'Username'," : '');
+				$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
+				$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') COLLATE utf8_unicode_ci DEFAULT NULL COMMENT 'Privileges'," : '');
+				$visibleName = ($this->settings['visibleNames'] ? "`name` varchar(255) COLLATE utf8_unicode_ci NULL COMMENT 'Name'," : '');
+				
+				# Assemble the SQL
+				$sql = "
+				CREATE TABLE IF NOT EXISTS `{$this->settings['table']}` (
+					`id` int(11) NOT NULL AUTO_INCREMENT COMMENT 'Automatic key',
+					{$username}
+					`email` varchar(255) NOT NULL COMMENT 'Your e-mail address',
+					`password` varchar(255) NOT NULL COMMENT 'Password',
+					{$visibleName}
+					{$privileges}
+					`validationToken` varchar(255) DEFAULT NULL COMMENT 'Token for validation or password reset',
+					`lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
+					`validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
+					`createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
+					PRIMARY KEY (`id`),
+					{$usernameIndex}
+					UNIQUE KEY `email` (`email`)
+				) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='Users';
+				";
+				
+				break;
+			
+			# PostgreSQL
+			case 'pgsql':
+				
+				# Determine optional parts
+				$username = ($this->settings['usernames'] ? 'username varchar(30) NOT NULL,' : '');
+				$usernameIndex = ($this->settings['usernames'] ? "" : '');
+				$privileges = ($this->settings['privileges'] ? "" : '');	// #!# Not yet implemented - PostgreSQL does not have a SET datatype
+				$visibleName = ($this->settings['visibleNames'] ? 'name varchar(255) NULL,' : '');
+				
+				# Assemble the SQL
+				$sql = "
+					CREATE SEQUENCE public.{$this->settings['table']}_id_seq
+						START WITH 1
+						INCREMENT BY 1
+						NO MINVALUE
+						NO MAXVALUE
+						CACHE 1;
+
+					CREATE TABLE IF NOT EXISTS public.{$this->settings['table']} (
+						id integer DEFAULT nextval(('{$this->settings['table']}_id_seq'::text)::regclass) NOT NULL,
+						{$username}
+						email varchar(255) NOT NULL,
+						password varchar(255) NOT NULL,
+						{$visibleName}
+						{$privileges}
+						\"validationToken\" varchar(255) DEFAULT NULL,
+						\"lastLoggedInAt\" timestamp with time zone,
+						\"validatedAt\" timestamp with time zone,
+						\"createdAt\" timestamp with time zone
+					);
+
+					SELECT pg_catalog.setval('public.{$this->settings['table']}_id_seq', 1, false);
+
+					ALTER TABLE ONLY public.{$this->settings['table']}
+						ADD CONSTRAINT {$this->settings['table']}_email_key UNIQUE (email);
+
+					ALTER TABLE ONLY public.{$this->settings['table']}
+						ADD CONSTRAINT {$this->settings['table']}_pkey PRIMARY KEY (id);
+				";
+				
+				break;
+		}
 		
 		# Return the SQL
 		return $sql;
