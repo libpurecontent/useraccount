@@ -984,10 +984,10 @@ class userAccount
 			$form->input (array (
 				'name'			=> 'name',
 				'title'			=> 'Visible name',
-				'required'		=> false,
+				'required'		=> (!$this->settings['usernames']),
 				'maxlength'		=> 255,
 				'size'			=> 50,
-				'description'	=> 'If not specified, your username will be used.',
+				'description'	=> ($this->settings['usernames'] ? 'If not specified, your username will be used.' : false),
 			));
 		}
 		if ($this->settings['privacyPolicy']) {
