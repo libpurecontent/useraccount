@@ -42,6 +42,7 @@ class userAccount
 		'emailAddressesDisallowRegexp'		=> false,
 		'privileges'						=> false,		// Whether there is a privileges field
 		'visibleNames'						=> false,		// Whether there is a visible name field
+		'visibleNamesLabel'					=> 'Visible name',
 		'cookieName'						=> 'login',		// NB: If there is more than one session system on the page, they must be set to have the same session.name PHP ini value
 		'cookieHttpOnly'					=> true,		// Marks the cookie as accessible only through the HTTP protocol, so not available to Javascript
 		'cookieSecure'						=> true,		// Indicates that the cookie should only be transmitted over a secure HTTPS connection from the client
@@ -1035,7 +1036,7 @@ class userAccount
 		if ($this->settings['visibleNames']) {
 			$form->input (array (
 				'name'			=> 'name',
-				'title'			=> 'Visible name',
+				'title'			=> $this->settings['visibleNamesLabel'],
 				'required'		=> (!$this->settings['usernames']),
 				'maxlength'		=> 255,
 				'size'			=> 50,
@@ -1315,7 +1316,7 @@ class userAccount
 		if ($this->settings['visibleNames']) {
 			$form->input (array (
 				'name'			=> 'name',
-				'title'			=> 'Visible name',
+				'title'			=> $this->settings['visibleNamesLabel'],
 				'default'		=> $userName,
 				'required'		=> false,
 				'maxlength'		=> 255,
