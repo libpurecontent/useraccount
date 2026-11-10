@@ -179,7 +179,7 @@ class userAccount
 	
 	
 	# Function to load resources required when a database access is involved; this is not done in the constructor to avoid unecessary overhead when using the get* accessor methods (which generally only require a session)
-	private function init ()
+	private function init ($enableSessions = true)
 	{
 		# End if already done
 		if ($this->initDone) {return true;}
@@ -192,18 +192,20 @@ class userAccount
 			}
 		}
 		
-		# Start the session if not already started
-		if (!session_id ()) {
-			
-			# Lock down PHP session management; see: https://www.php.net/session.configuration
-			ini_set ('session.name', $this->settings['cookieName']);
-			ini_set ('session.use_only_cookies', 1);
-			ini_set ('session.cookie_httponly', $this->settings['cookieHttpOnly']);
-			ini_set ('session.cookie_secure', $this->settings['cookieSecure']);
-			ini_set ('session.cookie_samesite', $this->settings['cookieSameSite']);
-			
-			# Stat the session
-			session_start ();
+		# Start the session if not already started, unless not required (e.g. API context)
+		if ($enableSessions) {
+			if (!session_id ()) {
+				
+				# Lock down PHP session management; see: https://www.php.net/session.configuration
+				ini_set ('session.name', $this->settings['cookieName']);
+				ini_set ('session.use_only_cookies', 1);
+				ini_set ('session.cookie_httponly', $this->settings['cookieHttpOnly']);
+				ini_set ('session.cookie_secure', $this->settings['cookieSecure']);
+				ini_set ('session.cookie_samesite', $this->settings['cookieSameSite']);
+				
+				# Start the session
+				session_start ();
+			}
 		}
 		
 		# End if a setup error occurred
@@ -1552,7 +1554,7 @@ class userAccount
 	public function deleteApiCall ()
 	{
 		# Initialise or end
-		if (!$this->init ()) {return false;}
+		if (!$this->init (false)) {return false;}
 		
 		# Do validation
 		if (!$user = $this->doApiValidation ($error)) {
@@ -1624,7 +1626,7 @@ class userAccount
 	public function authenticateApiCall ($requestedFields = array ())
 	{
 		# Initialise or end
-		if (!$this->init ()) {return false;}
+		if (!$this->init (false)) {return false;}
 		
 		# Do validation
 		if (!$data = $this->doApiValidation ($error)) {
@@ -1697,7 +1699,7 @@ class userAccount
 	public function createApiCall ()
 	{
 		# Initialise or end
-		if (!$this->init ()) {return false;}
+		if (!$this->init (false)) {return false;}
 		
 		# Get the e-mail and password; POST is used because otherwise the username and password will appear in the server logs
 		$email = (isSet ($_POST['email']) && strlen ($_POST['email']) ? $_POST['email'] : false);
