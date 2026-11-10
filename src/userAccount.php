@@ -315,7 +315,7 @@ class userAccount
 	# Function to provide HTML login links that can be used in the page header
 	public function linksHtml ($usernameAppendedHtml = false, $cssClass = 'loginlinks')
 	{
-		# Initialise or end
+		# Initialise or end; this is required still because without session_start, $_SESSION will not exist at all
 		if (!$this->init ()) {return false;}
 		
 		# Start a list of links
