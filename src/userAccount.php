@@ -47,6 +47,7 @@ class userAccount
 		'cookieHttpOnly'					=> true,		// Marks the cookie as accessible only through the HTTP protocol, so not available to Javascript
 		'cookieSecure'						=> true,		// Indicates that the cookie should only be transmitted over a secure HTTPS connection from the client
 		'cookieSameSite'					=> 'Strict',	// Strict/Lax/None; see: https://web.dev/articles/samesite-cookies-explained
+		'sessionLogging'					=> false,		// Whether to log the session ID on login/logout in the database table, for future audit purposes
 		'loginMessageHtml'					=> false,		// Extra message for login page, e.g. to clarify what type of account needed, etc.
 		'privacyPolicy'						=> false,		// Privacy policy URL for checkbox/link during signup
 	);
@@ -76,6 +77,7 @@ class userAccount
 				$username = ($this->settings['usernames'] ? "`username` varchar(30) NOT NULL COMMENT 'Username'," : '');
 				$usernameIndex = ($this->settings['usernames'] ? "UNIQUE KEY `username` (`username`)," : '');
 				$privileges = ($this->settings['privileges'] ? "`privileges` set('administrator','other') DEFAULT NULL COMMENT 'Privileges'," : '');
+				$sessionId = ($this->settings['sessionLogging'] ? "`sessionId` VARCHAR(255) NULL COMMENT 'Session ID active'," : '');
 				$visibleName = ($this->settings['visibleNames'] ? "`name` varchar(255) NULL COMMENT 'Name'," : '');
 				
 				# Assemble the SQL
@@ -89,6 +91,7 @@ class userAccount
 					{$privileges}
 					`validationToken` varchar(255) DEFAULT NULL COMMENT 'Token for validation or password reset',
 					`lastLoggedInAt` datetime DEFAULT NULL COMMENT 'Last logged in time',
+					{$sessionId}
 					`validatedAt` datetime DEFAULT NULL COMMENT 'Time when validated',
 					`createdAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Timestamp',
 					PRIMARY KEY (`id`),
@@ -107,6 +110,7 @@ class userAccount
 				$usernameIndex = ($this->settings['usernames'] ? "" : '');
 				$privileges = ($this->settings['privileges'] ? "" : '');	// #!# Not yet implemented - PostgreSQL does not have a SET datatype
 				$visibleName = ($this->settings['visibleNames'] ? 'name varchar(255) NULL,' : '');
+				$sessionId = ($this->settings['sessionLogging'] ? "\"sessionId\" varchar(255) NULL COMMENT 'Session ID active'," : '');
 				
 				# Assemble the SQL
 				$sql = "
@@ -126,6 +130,7 @@ class userAccount
 						{$privileges}
 						\"validationToken\" varchar(255) DEFAULT NULL,
 						\"lastLoggedInAt\" timestamp with time zone,
+						{$sessionId}
 						\"validatedAt\" timestamp with time zone,
 						\"createdAt\" timestamp with time zone
 					);
@@ -477,12 +482,15 @@ class userAccount
 	# Function to write the login into the session
 	private function doLogin ($accountDetails)
 	{
-		# Log that the user has logged in
-		$updateData = array ('lastLoggedInAt' => 'NOW()');
-		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $accountDetails['email']));
-		
 		# Regenerate the session ID
 		session_regenerate_id ($deleteOldSession = true);
+		
+		# Log that the user has logged in
+		$updateData = array ('lastLoggedInAt' => 'NOW()');
+		if ($this->settings['sessionLogging']) {
+			$updateData['sessionId'] = session_id ();
+		}
+		$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $accountDetails['email']));
 		
 		# Write the values into the session
 		$_SESSION[$this->settings['namespace']]['userId'] = $accountDetails['id'];
@@ -559,6 +567,12 @@ class userAccount
 	# Helper function to destroy a session properly
 	private function killSession ()
 	{
+		# If session logging is enabled, prefix the session ID to indicate last use
+		if ($this->settings['sessionLogging']) {
+			$updateData = array ('sessionId' => 'was:' . session_id ());
+			$this->databaseConnection->update ($this->settings['database'], $this->settings['table'], $updateData, array ('email' => $_SESSION[$this->settings['namespace']]['email']));
+		}
+		
 		# Regenerate the session ID
 		session_regenerate_id ($deleteOldSession = true);
 		
