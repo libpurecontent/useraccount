@@ -224,6 +224,9 @@ class userAccount
 	# Public accessor to get the ID
 	public function getUserId ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
 		
@@ -235,6 +238,9 @@ class userAccount
 	# Public accessor to get the e-mail address
 	public function getUserEmail ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
 		
@@ -246,6 +252,9 @@ class userAccount
 	# Public accessor to get the username
 	public function getUserUsername ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Return NULL if not enabled
 		if (!$this->settings['usernames']) {return NULL;}
 		
@@ -260,6 +269,9 @@ class userAccount
 	# Public accessor to get the visible name
 	public function getUserName ($returnUsernameIfNone = false)
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# If visible name functionality is not enabled, return the user's username or false
 		if (!$this->settings['visibleNames']) {
 			return ($returnUsernameIfNone ? $this->getUserUsername () : NULL);
@@ -276,6 +288,9 @@ class userAccount
 	# Status label function
 	public function getStatus ()
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# If logged in, show the e-mail
 		if (isSet ($_SESSION[$this->settings['namespace']])) {
 			$html = '<a href="' . $this->baseUrl . $this->settings['loginUrl'] . '">' . htmlspecialchars ($_SESSION[$this->settings['namespace']]['email']) . '</a>';
@@ -291,6 +306,9 @@ class userAccount
 	# Function to provide HTML login links that can be used in the page header
 	public function linksHtml ($usernameAppendedHtml = false, $cssClass = 'loginlinks')
 	{
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Start a list of links
 		$links = array ();
 		if (isSet ($_SESSION[$this->settings['namespace']])) {	// i.e. if signed in
@@ -325,6 +343,9 @@ class userAccount
 		# Return NULL if not enabled
 		if (!$this->settings['privileges']) {return NULL;}
 		
+		# Initialise or end
+		if (!$this->init ()) {return false;}
+		
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
 		
@@ -338,6 +359,9 @@ class userAccount
 	{
 		# Return NULL if not enabled
 		if (!$this->settings['privileges']) {return NULL;}
+		
+		# Initialise or end
+		if (!$this->init ()) {return false;}
 		
 		# Check the session, and destroy it if there is a problem (e.g. mismatch in the user-agent, or the timestamp expires)
 		$this->doSessionChecks ();
