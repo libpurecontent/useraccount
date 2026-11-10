@@ -60,6 +60,7 @@ class userAccount
 	private $siteUrl;
 	private $siteDomain;
 	private $loginMessage = false;
+	private $initDone = false;
 	private $setupError = NULL;
 	
 	
@@ -180,6 +181,9 @@ class userAccount
 	# Function to load resources required when a database access is involved; this is not done in the constructor to avoid unecessary overhead when using the get* accessor methods (which generally only require a session)
 	private function init ()
 	{
+		# End if already done
+		if ($this->initDone) {return true;}
+		
 		# Ensure the table exists
 		if ($this->databaseConnection) {
 			$tables = $this->databaseConnection->getTables ($this->settings['database']);
@@ -207,6 +211,9 @@ class userAccount
 			$this->html = $this->setupError;
 			return false;
 		}
+		
+		# Flag done
+		$this->initDone = true;
 		
 		# Return success
 		return true;
