@@ -172,20 +172,6 @@ class userAccount
 		$this->siteUrl = ($this->settings['siteUrl'] ? $this->settings['siteUrl'] : $_SERVER['_SITE_URL']);
 		$this->siteDomain = preg_replace ('|^https?://|', '', $this->siteUrl);
 		
-		# Start the session if not already started
-		if (!session_id ()) {
-			
-			# Lock down PHP session management; see: https://www.php.net/session.configuration
-			ini_set ('session.name', $this->settings['cookieName']);
-			ini_set ('session.use_only_cookies', 1);
-			ini_set ('session.cookie_httponly', $this->settings['cookieHttpOnly']);
-			ini_set ('session.cookie_secure', $this->settings['cookieSecure']);
-			ini_set ('session.cookie_samesite', $this->settings['cookieSameSite']);
-			
-			# Stat the session
-			session_start ();
-		}
-		
 		// Take no other action
 		
 	}
@@ -200,6 +186,20 @@ class userAccount
 			if (!in_array ($this->settings['table'], $tables)) {
 				$this->setupError = "\n<p class=\"warning\">The login system is not set up properly. The website administrator needs to fix this problem.</p>";
 			}
+		}
+		
+		# Start the session if not already started
+		if (!session_id ()) {
+			
+			# Lock down PHP session management; see: https://www.php.net/session.configuration
+			ini_set ('session.name', $this->settings['cookieName']);
+			ini_set ('session.use_only_cookies', 1);
+			ini_set ('session.cookie_httponly', $this->settings['cookieHttpOnly']);
+			ini_set ('session.cookie_secure', $this->settings['cookieSecure']);
+			ini_set ('session.cookie_samesite', $this->settings['cookieSameSite']);
+			
+			# Stat the session
+			session_start ();
 		}
 		
 		# End if a setup error occurred
